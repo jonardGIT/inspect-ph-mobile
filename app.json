@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Inspect PH",
+    "slug": "inspect-ph",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "inspectph",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "updates": {
+      "enabled": false,
+      "checkAutomatically": "NEVER",
+      "fallbackToCacheTimeout": 0
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.inspectph.mobile"
+    },
+    "android": {
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.inspectph.mobile"
+    },
+    "web": {
+      "output": "static"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow Inspect PH to capture inspection evidence photos.",
+          "photosPermission": "Allow Inspect PH to attach existing inspection evidence photos."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
