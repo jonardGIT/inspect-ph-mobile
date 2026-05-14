@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "scheme": "inspectph",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
     "updates": {
       "enabled": false,
       "checkAutomatically": "NEVER",

@@ -10,6 +10,7 @@ import type {
   ChecklistTemplateRecord,
   FindingRecord,
   InspectionChecklistResultRecord,
+  InspectionMapPoint,
   InspectionRecord,
   InspectionSummary,
   User,
@@ -158,6 +159,7 @@ export async function getInspectionSummary(
 export async function listInspections(input: {
   accessToken: string;
   limit?: number;
+  officeId?: string;
   page?: number;
   status?: InspectionRecord["status"];
 }): Promise<ApiListResponse<InspectionRecord>> {
@@ -171,6 +173,10 @@ export async function listInspections(input: {
     params.set("page", String(input.page));
   }
 
+  if (input.officeId) {
+    params.set("officeId", input.officeId);
+  }
+
   if (input.status) {
     params.set("status", input.status);
   }
@@ -180,6 +186,30 @@ export async function listInspections(input: {
     undefined,
     input.accessToken,
   );
+}
+
+export async function listInspectionMapPoints(input: {
+  accessToken: string;
+  officeId?: string;
+  status?: InspectionRecord["status"];
+}): Promise<InspectionMapPoint[]> {
+  const params = new URLSearchParams();
+
+  if (input.officeId) {
+    params.set("officeId", input.officeId);
+  }
+
+  if (input.status) {
+    params.set("status", input.status);
+  }
+
+  const payload = await request<ApiResponse<InspectionMapPoint[]>>(
+    `/inspections/map-points${params.toString() ? `?${params.toString()}` : ""}`,
+    undefined,
+    input.accessToken,
+  );
+
+  return payload.data;
 }
 
 export async function getInspectionDetail(
@@ -374,8 +404,12 @@ export async function createInspectionAttachment(input: {
         mimeType: input.mimeType,
         storageKey: input.storageKey,
         ...(input.capturedAt ? { capturedAt: input.capturedAt } : {}),
-        ...(typeof input.latitude === "number" ? { latitude: input.latitude } : {}),
-        ...(typeof input.longitude === "number" ? { longitude: input.longitude } : {}),
+        ...(typeof input.latitude === "number"
+          ? { latitude: input.latitude }
+          : {}),
+        ...(typeof input.longitude === "number"
+          ? { longitude: input.longitude }
+          : {}),
         ...(typeof input.accuracyMeters === "number"
           ? { accuracyMeters: input.accuracyMeters }
           : {}),

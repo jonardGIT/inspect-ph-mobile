@@ -63,6 +63,8 @@ export default function InspectionDetailScreen() {
   const router = useRouter();
   const { session, signOut } = useAuthSession();
   const accessToken = session?.tokens.accessToken;
+  const isInspector = session?.user.role === "inspector";
+  const isRouteBlocked = Boolean(session) && !isInspector;
   const [inspection, setInspection] = useState<InspectionRecord | null>(null);
   const [checklistTemplates, setChecklistTemplates] = useState<
     ChecklistTemplateRecord[]
@@ -94,10 +96,12 @@ export default function InspectionDetailScreen() {
   const [savingTemplateId, setSavingTemplateId] = useState<string | null>(null);
   const [isCreatingFinding, setIsCreatingFinding] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
-  const [retryingFindingId, setRetryingFindingId] = useState<string | null>(null);
-  const [retryingAttachmentId, setRetryingAttachmentId] = useState<string | null>(
+  const [retryingFindingId, setRetryingFindingId] = useState<string | null>(
     null,
   );
+  const [retryingAttachmentId, setRetryingAttachmentId] = useState<
+    string | null
+  >(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,6 +115,12 @@ export default function InspectionDetailScreen() {
   useEffect(() => {
     if (!accessToken) {
       router.replace("/");
+      return;
+    }
+
+    if (!isInspector) {
+      setError("This mobile route is only available to inspector accounts.");
+      setIsLoading(false);
       return;
     }
 
@@ -133,7 +143,8 @@ export default function InspectionDetailScreen() {
     }
 
     async function loadQueuedAttachments() {
-      const nextQueuedAttachments = await listQueuedAttachmentUploads(inspectionId);
+      const nextQueuedAttachments =
+        await listQueuedAttachmentUploads(inspectionId);
 
       if (!isCancelled) {
         setQueuedAttachments(nextQueuedAttachments);
@@ -199,7 +210,7 @@ export default function InspectionDetailScreen() {
     return () => {
       isCancelled = true;
     };
-  }, [accessToken, inspectionId, router, signOut]);
+  }, [accessToken, inspectionId, isInspector, router, signOut]);
 
   async function withLocationCapture() {
     const permission = await Location.requestForegroundPermissionsAsync();
@@ -310,18 +321,16 @@ export default function InspectionDetailScreen() {
     setIsCreatingFinding(true);
     setFindingError(null);
 
-    let queuedFinding:
-      | {
-          accuracyMeters?: number;
-          correctiveAction?: string;
-          description: string;
-          inspectionId: string;
-          latitude?: number;
-          longitude?: number;
-          severity: FindingSeverity;
-          title: string;
-        }
-      | null = null;
+    let queuedFinding: {
+      accuracyMeters?: number;
+      correctiveAction?: string;
+      description: string;
+      inspectionId: string;
+      latitude?: number;
+      longitude?: number;
+      severity: FindingSeverity;
+      title: string;
+    } | null = null;
 
     try {
       const location = await withLocationCapture();
@@ -356,7 +365,10 @@ export default function InspectionDetailScreen() {
       ) {
         const queuedItem = await enqueueFindingCreate(queuedFinding);
 
-        setQueuedFindings((currentFindings) => [queuedItem, ...currentFindings]);
+        setQueuedFindings((currentFindings) => [
+          queuedItem,
+          ...currentFindings,
+        ]);
         resetFindingDraft();
         setFindingError(
           "Finding was queued for retry. Use the sync status below when the network is available.",
@@ -400,7 +412,9 @@ export default function InspectionDetailScreen() {
         ...(item.correctiveAction
           ? { correctiveAction: item.correctiveAction }
           : {}),
-        ...(typeof item.latitude === "number" ? { latitude: item.latitude } : {}),
+        ...(typeof item.latitude === "number"
+          ? { latitude: item.latitude }
+          : {}),
         ...(typeof item.longitude === "number"
           ? { longitude: item.longitude }
           : {}),
@@ -467,7 +481,9 @@ export default function InspectionDetailScreen() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
-      throw new Error("Photo library permission is required to attach evidence.");
+      throw new Error(
+        "Photo library permission is required to attach evidence.",
+      );
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -488,18 +504,16 @@ export default function InspectionDetailScreen() {
     setAttachmentError(null);
     setIsUploadingAttachment(true);
 
-    let queuedUpload:
-      | {
-          accuracyMeters?: number;
-          capturedAt: string;
-          fileName: string;
-          inspectionId: string;
-          latitude?: number;
-          longitude?: number;
-          mimeType: string;
-          uri: string;
-        }
-      | null = null;
+    let queuedUpload: {
+      accuracyMeters?: number;
+      capturedAt: string;
+      fileName: string;
+      inspectionId: string;
+      latitude?: number;
+      longitude?: number;
+      mimeType: string;
+      uri: string;
+    } | null = null;
 
     try {
       const asset = await pickAttachment(source);
@@ -525,7 +539,10 @@ export default function InspectionDetailScreen() {
         },
       });
 
-      setAttachments((currentAttachments) => [attachment, ...currentAttachments]);
+      setAttachments((currentAttachments) => [
+        attachment,
+        ...currentAttachments,
+      ]);
     } catch (uploadError) {
       const errorMessage =
         uploadError instanceof Error
@@ -585,7 +602,9 @@ export default function InspectionDetailScreen() {
           mimeType: item.mimeType,
           uri: item.uri,
           ...(item.capturedAt ? { capturedAt: item.capturedAt } : {}),
-          ...(typeof item.latitude === "number" ? { latitude: item.latitude } : {}),
+          ...(typeof item.latitude === "number"
+            ? { latitude: item.latitude }
+            : {}),
           ...(typeof item.longitude === "number"
             ? { longitude: item.longitude }
             : {}),
@@ -599,7 +618,10 @@ export default function InspectionDetailScreen() {
       setQueuedAttachments((currentItems) =>
         currentItems.filter((currentItem) => currentItem.id !== item.id),
       );
-      setAttachments((currentAttachments) => [attachment, ...currentAttachments]);
+      setAttachments((currentAttachments) => [
+        attachment,
+        ...currentAttachments,
+      ]);
     } catch (retryError) {
       const errorMessage =
         retryError instanceof Error
@@ -650,6 +672,19 @@ export default function InspectionDetailScreen() {
         {!isLoading && error ? (
           <View style={styles.card}>
             <Text style={styles.errorText}>{error}</Text>
+            {isRouteBlocked ? (
+              <Pressable
+                accessibilityRole="button"
+                style={styles.primaryButton}
+                onPress={() => {
+                  router.replace("/");
+                }}
+              >
+                <Text style={styles.primaryButtonLabel}>
+                  Back to mobile home
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 
@@ -902,7 +937,8 @@ export default function InspectionDetailScreen() {
                 <View style={styles.syncCard}>
                   <Text style={styles.syncTitle}>Sync status</Text>
                   <Text style={styles.sectionBody}>
-                    {queuedFindings.length} finding{queuedFindings.length === 1 ? "" : "s"} waiting for retry.
+                    {queuedFindings.length} finding
+                    {queuedFindings.length === 1 ? "" : "s"} waiting for retry.
                   </Text>
                   <Pressable
                     accessibilityRole="button"
@@ -916,7 +952,9 @@ export default function InspectionDetailScreen() {
                     }}
                   >
                     <Text style={styles.secondaryButtonLabel}>
-                      {retryingFindingId ? "Retrying..." : "Retry pending findings"}
+                      {retryingFindingId
+                        ? "Retrying..."
+                        : "Retry pending findings"}
                     </Text>
                   </Pressable>
                   {queuedFindings.map((item) => (
@@ -924,10 +962,14 @@ export default function InspectionDetailScreen() {
                       <View style={styles.queuedBody}>
                         <Text style={styles.rowTitle}>{item.title}</Text>
                         <Text style={styles.rowMeta}>
-                          {item.status === "pending" ? "Pending sync" : "Retry failed"} • Attempt {item.retryCount + 1}
+                          {item.status === "pending"
+                            ? "Pending sync"
+                            : "Retry failed"}{" "}
+                          • Attempt {item.retryCount + 1}
                         </Text>
                         <Text style={styles.rowMeta}>
-                          Severity {item.severity} • Queued {formatDateTime(item.queuedAt)}
+                          Severity {item.severity} • Queued{" "}
+                          {formatDateTime(item.queuedAt)}
                         </Text>
                         {item.lastError ? (
                           <Text style={styles.errorText}>{item.lastError}</Text>
@@ -939,7 +981,8 @@ export default function InspectionDetailScreen() {
                         style={[
                           styles.secondaryButton,
                           styles.inlineButton,
-                          retryingFindingId === item.id && styles.buttonDisabled,
+                          retryingFindingId === item.id &&
+                            styles.buttonDisabled,
                         ]}
                         onPress={() => {
                           void handleRetryQueuedFinding(item);
@@ -974,13 +1017,16 @@ export default function InspectionDetailScreen() {
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Attachments</Text>
               <Text style={styles.sectionBody}>
-                Capture evidence photos in the field or attach them from the device library.
+                Capture evidence photos in the field or attach them from the
+                device library.
               </Text>
               {queuedAttachments.length > 0 ? (
                 <View style={styles.syncCard}>
                   <Text style={styles.syncTitle}>Sync status</Text>
                   <Text style={styles.sectionBody}>
-                    {queuedAttachments.length} attachment{queuedAttachments.length === 1 ? "" : "s"} waiting for retry.
+                    {queuedAttachments.length} attachment
+                    {queuedAttachments.length === 1 ? "" : "s"} waiting for
+                    retry.
                   </Text>
                   <Pressable
                     accessibilityRole="button"
@@ -994,7 +1040,9 @@ export default function InspectionDetailScreen() {
                     }}
                   >
                     <Text style={styles.secondaryButtonLabel}>
-                      {retryingAttachmentId ? "Retrying..." : "Retry pending uploads"}
+                      {retryingAttachmentId
+                        ? "Retrying..."
+                        : "Retry pending uploads"}
                     </Text>
                   </Pressable>
                   {queuedAttachments.map((item) => (
@@ -1002,7 +1050,10 @@ export default function InspectionDetailScreen() {
                       <View style={styles.queuedBody}>
                         <Text style={styles.rowTitle}>{item.fileName}</Text>
                         <Text style={styles.rowMeta}>
-                          {item.status === "pending" ? "Pending sync" : "Retry failed"} • Attempt {item.retryCount + 1}
+                          {item.status === "pending"
+                            ? "Pending sync"
+                            : "Retry failed"}{" "}
+                          • Attempt {item.retryCount + 1}
                         </Text>
                         <Text style={styles.rowMeta}>
                           Queued {formatDateTime(item.queuedAt)}
@@ -1017,14 +1068,17 @@ export default function InspectionDetailScreen() {
                         style={[
                           styles.secondaryButton,
                           styles.inlineButton,
-                          retryingAttachmentId === item.id && styles.buttonDisabled,
+                          retryingAttachmentId === item.id &&
+                            styles.buttonDisabled,
                         ]}
                         onPress={() => {
                           void handleRetryQueuedAttachment(item);
                         }}
                       >
                         <Text style={styles.secondaryButtonLabel}>
-                          {retryingAttachmentId === item.id ? "Retrying" : "Retry"}
+                          {retryingAttachmentId === item.id
+                            ? "Retrying"
+                            : "Retry"}
                         </Text>
                       </Pressable>
                     </View>
@@ -1060,7 +1114,9 @@ export default function InspectionDetailScreen() {
                     void handleAttachmentUpload("library");
                   }}
                 >
-                  <Text style={styles.secondaryButtonLabel}>Attach from library</Text>
+                  <Text style={styles.secondaryButtonLabel}>
+                    Attach from library
+                  </Text>
                 </Pressable>
               </View>
               {attachmentError ? (
@@ -1078,8 +1134,12 @@ export default function InspectionDetailScreen() {
                         <Text style={styles.attachmentPreviewLabel}>IMG</Text>
                       </View>
                       <View style={styles.attachmentBody}>
-                        <Text style={styles.rowTitle}>{attachment.fileName}</Text>
-                        <Text style={styles.rowMeta}>{attachment.mimeType}</Text>
+                        <Text style={styles.rowTitle}>
+                          {attachment.fileName}
+                        </Text>
+                        <Text style={styles.rowMeta}>
+                          {attachment.mimeType}
+                        </Text>
                         <Text style={styles.rowMeta}>
                           {(attachment.fileSizeBytes / 1024).toFixed(1)} KB
                         </Text>

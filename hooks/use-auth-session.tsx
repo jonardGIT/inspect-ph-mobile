@@ -1,9 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import * as SecureStore from 'expo-secure-store';
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import * as SecureStore from "expo-secure-store";
 
-import { login, type AuthSession } from '@/lib/api';
+import { login, type AuthSession } from "@/lib/api";
 
-const AUTH_SESSION_STORAGE_KEY = 'inspect-ph-mobile-session';
+const AUTH_SESSION_STORAGE_KEY = "inspect-ph-mobile-session";
 
 interface AuthSessionContextValue {
   isHydrated: boolean;
@@ -15,6 +15,33 @@ interface AuthSessionContextValue {
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
 
+function normalizeAuthSession(session: AuthSession): AuthSession {
+  const role = session.user.role;
+  const fallbackRoleProfile =
+    role === "admin"
+      ? {
+          accessScope: "global" as const,
+          label: "Administrator",
+          permissions: [],
+        }
+      : {
+          accessScope: "assigned" as const,
+          label: "Inspector",
+          permissions: [],
+        };
+
+  return {
+    ...session,
+    user: {
+      ...session.user,
+      officeIds: Array.isArray(session.user.officeIds)
+        ? session.user.officeIds
+        : [],
+      roleProfile: session.user.roleProfile ?? fallbackRoleProfile,
+    },
+  };
+}
+
 async function readStoredSession() {
   const rawValue = await SecureStore.getItemAsync(AUTH_SESSION_STORAGE_KEY);
 
@@ -23,14 +50,18 @@ async function readStoredSession() {
   }
 
   try {
-    return JSON.parse(rawValue) as AuthSession;
+    return normalizeAuthSession(JSON.parse(rawValue) as AuthSession);
   } catch {
     await SecureStore.deleteItemAsync(AUTH_SESSION_STORAGE_KEY);
     return null;
   }
 }
 
-export function AuthSessionProvider({ children }: { children: React.ReactNode }) {
+export function AuthSessionProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [isHydrated, setIsHydrated] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -40,6 +71,13 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
 
     async function hydrateSession() {
       const storedSession = await readStoredSession();
+
+      if (storedSession) {
+        await SecureStore.setItemAsync(
+          AUTH_SESSION_STORAGE_KEY,
+          JSON.stringify(storedSession),
+        );
+      }
 
       if (isCancelled) {
         return;
@@ -65,7 +103,7 @@ export function AuthSessionProvider({ children }: { children: React.ReactNode })
         setIsSigningIn(true);
 
         try {
-          const nextSession = await login(input);
+          const nextSession = normalizeAuthSession(await login(input));
           await SecureStore.setItemAsync(
             AUTH_SESSION_STORAGE_KEY,
             JSON.stringify(nextSession),
@@ -94,7 +132,7 @@ export function useAuthSession() {
   const value = useContext(AuthSessionContext);
 
   if (!value) {
-    throw new Error('useAuthSession must be used within AuthSessionProvider');
+    throw new Error("useAuthSession must be used within AuthSessionProvider");
   }
 
   return value;
