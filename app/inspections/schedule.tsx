@@ -1,17 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { COLORS, SPACING } from "@/constants/theme";
+import {
+  AppHero,
+  AppRecordCard,
+  AppStateCard,
+  SectionHeading,
+  StatusBadge,
+  SurfaceCard,
+} from "@/components/mobile-ui";
+import { COLORS, SPACING, TYPOGRAPHY } from "@/constants/theme";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { ApiRequestError, listInspections } from "@/lib/api";
 
@@ -59,10 +65,22 @@ function groupInspectionsByDate(
 }
 
 export default function InspectionScheduleScreen() {
+  const { officeId, officeLabel } = useLocalSearchParams<{
+    officeId?: string;
+    officeLabel?: string;
+  }>();
   const router = useRouter();
   const { session, signOut } = useAuthSession();
   const accessToken = session?.tokens.accessToken;
   const isInspector = session?.user.role === "inspector";
+  const selectedOfficeId =
+    typeof officeId === "string" && officeId.trim().length > 0
+      ? officeId
+      : undefined;
+  const selectedOfficeLabel =
+    typeof officeLabel === "string" && officeLabel.trim().length > 0
+      ? officeLabel
+      : null;
   const [inspections, setInspections] = useState<InspectionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -94,6 +112,7 @@ export default function InspectionScheduleScreen() {
         accessToken,
         limit: 50,
         page: 1,
+        ...(selectedOfficeId ? { officeId: selectedOfficeId } : {}),
       });
 
       setInspections(response.data);
@@ -128,7 +147,7 @@ export default function InspectionScheduleScreen() {
     }
 
     void loadSchedule();
-  }, [accessToken, isInspector, router]);
+  }, [accessToken, isInspector, router, selectedOfficeId]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -145,78 +164,117 @@ export default function InspectionScheduleScreen() {
           />
         }
       >
-        <View style={styles.heroCard}>
-          <Text style={styles.kicker}>Inspector schedule</Text>
-          <Text style={styles.title}>Upcoming field visits</Text>
-          <Text style={styles.subtitle}>
-            Every item shown here already respects your assignment, office, and
-            LGU scope.
-          </Text>
-        </View>
+        <AppHero
+          eyebrow="Inspector schedule"
+          title={
+            selectedOfficeLabel
+              ? "Scoped field visits"
+              : "Upcoming field visits"
+          }
+          description={
+            selectedOfficeLabel
+              ? `Showing only inspections assigned to ${selectedOfficeLabel}.`
+              : "Every item shown here already respects your assignment, office, and LGU scope."
+          }
+          trailing={
+            <StatusBadge
+              label={`${inspections.length} visits`}
+              tone="warning"
+            />
+          }
+        />
+
+        {selectedOfficeLabel ? (
+          <SurfaceCard tone="muted">
+            <SectionHeading
+              title="Office scope"
+              description={selectedOfficeLabel}
+            />
+          </SurfaceCard>
+        ) : null}
 
         {isLoading ? (
-          <View style={styles.centeredState}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.stateTitle}>Loading schedule</Text>
-            <Text style={styles.stateBody}>
-              Refreshing your scoped field queue.
-            </Text>
-          </View>
+          <AppStateCard
+            description="Refreshing your scoped field queue."
+            loading
+            title="Loading schedule"
+          />
         ) : null}
 
         {!isLoading && error ? (
-          <View style={styles.card}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
+          <AppStateCard
+            description={error}
+            title="Schedule unavailable"
+            tone="accent"
+          />
         ) : null}
 
         {!isLoading && !error && scheduleGroups.length === 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.stateTitle}>No scheduled inspections</Text>
-            <Text style={styles.stateBody}>
-              New assigned work will appear here after it is scheduled.
-            </Text>
-          </View>
+          <AppStateCard
+            description="New assigned work will appear here after it is scheduled."
+            title="No scheduled inspections"
+          />
         ) : null}
 
         {!isLoading && !error
           ? scheduleGroups.map((group) => (
-              <View key={group.dateLabel} style={styles.card}>
-                <Text style={styles.sectionTitle}>{group.dateLabel}</Text>
+              <SurfaceCard key={group.dateLabel}>
+                <SectionHeading
+                  title={group.dateLabel}
+                  description={`${group.inspections.length} visits queued for this day`}
+                />
                 <View style={styles.groupList}>
                   {group.inspections.map((inspection) => (
-                    <Pressable
+                    <AppRecordCard
                       key={inspection.id}
-                      accessibilityRole="button"
-                      style={styles.inspectionCard}
                       onPress={() => {
                         router.push({
                           pathname: "/inspections/[inspectionId]",
                           params: { inspectionId: inspection.id },
                         });
                       }}
+                      title={inspection.business.businessName}
+                      trailing={
+                        <StatusBadge
+                          label={inspection.status.replace("_", " ")}
+                          tone={getStatusTone(inspection.status)}
+                        />
+                      }
                     >
-                      <Text style={styles.inspectionTitle}>
-                        {inspection.business.businessName}
-                      </Text>
                       <Text style={styles.inspectionMeta}>
                         {inspection.office.name} · {inspection.office.code}
                       </Text>
                       <Text style={styles.inspectionMeta}>
+                        Permit {inspection.permit.permitNumber}
+                      </Text>
+                      <Text style={styles.inspectionMeta}>
                         {formatDateTime(inspection.scheduledAt)}
                       </Text>
-                      <Text style={styles.inspectionStatus}>
-                        {inspection.status.replace("_", " ")}
-                      </Text>
-                    </Pressable>
+                    </AppRecordCard>
                   ))}
                 </View>
-              </View>
+              </SurfaceCard>
             ))
           : null}
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function getStatusTone(status: InspectionRecord["status"]) {
+  if (status === "overdue") {
+    return "danger" as const;
+  }
+
+  if (status === "completed") {
+    return "success" as const;
+  }
+
+  if (status === "in_progress") {
+    return "warning" as const;
+  }
+
+  return "info" as const;
 }
 
 const styles = StyleSheet.create({
@@ -227,29 +285,7 @@ const styles = StyleSheet.create({
   content: {
     padding: SPACING.lg,
     gap: SPACING.lg,
-  },
-  heroCard: {
-    borderRadius: 24,
-    padding: SPACING.lg,
-    backgroundColor: COLORS.primary,
-    gap: SPACING.sm,
-  },
-  kicker: {
-    color: COLORS.primaryMuted,
-    fontSize: 14,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  title: {
-    color: COLORS.surface,
-    fontSize: 28,
-    fontWeight: "700",
-  },
-  subtitle: {
-    color: COLORS.surface,
-    fontSize: 15,
-    lineHeight: 22,
+    paddingBottom: SPACING.xxl,
   },
   centeredState: {
     alignItems: "center",
@@ -257,57 +293,28 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     padding: SPACING.xl,
   },
-  card: {
-    borderRadius: 24,
-    padding: SPACING.lg,
-    backgroundColor: COLORS.surface,
-    gap: SPACING.md,
-  },
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: "700",
-  },
   groupList: {
     gap: SPACING.md,
   },
-  inspectionCard: {
-    borderRadius: 18,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.xs,
-  },
-  inspectionTitle: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: "700",
-  },
   inspectionMeta: {
-    color: COLORS.mutedText,
-    fontSize: 14,
-  },
-  inspectionStatus: {
-    color: COLORS.secondary,
-    fontSize: 13,
-    fontWeight: "700",
-    textTransform: "capitalize",
+    color: COLORS.textSubtle,
+    fontSize: TYPOGRAPHY.label,
   },
   stateTitle: {
     color: COLORS.text,
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: TYPOGRAPHY.title,
+    fontWeight: "800",
     textAlign: "center",
   },
   stateBody: {
-    color: COLORS.mutedText,
-    fontSize: 14,
+    color: COLORS.textSubtle,
+    fontSize: TYPOGRAPHY.label,
     lineHeight: 20,
     textAlign: "center",
   },
   errorText: {
     color: COLORS.danger,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.label,
     lineHeight: 20,
   },
 });

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Linking,
   Pressable,
   RefreshControl,
@@ -10,27 +9,31 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { COLORS, SPACING } from "@/constants/theme";
+import {
+  AppButton,
+  AppHero,
+  AppStateCard,
+  SectionHeading,
+  StatusBadge,
+  SurfaceCard,
+} from "@/components/mobile-ui";
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "@/constants/theme";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { ApiRequestError, listInspectionMapPoints } from "@/lib/api";
 
 import type { InspectionMapPoint } from "../../../shared/types/api";
 
-type Region = {
-  latitude: number;
-  latitudeDelta: number;
-  longitude: number;
-  longitudeDelta: number;
-};
-
 type NativeMapModule = typeof import("react-native-maps");
 
-function createGoogleMapsLink(point: InspectionMapPoint) {
-  return `https://www.google.com/maps?q=${point.location.latitude},${point.location.longitude}`;
-}
+type Region = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+};
 
 function createRegion(points: InspectionMapPoint[]): Region {
   const latitudes = points.map((point) => point.location.latitude);
@@ -92,11 +95,30 @@ function getFallbackPinStyle(
   };
 }
 
+function createGoogleMapsLink(point: InspectionMapPoint) {
+  const { latitude, longitude } = point.location;
+  const label = encodeURIComponent(point.business.businessName);
+
+  return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}&query_place_id=${label}`;
+}
+
 export default function InspectionMapScreen() {
+  const { officeId, officeLabel } = useLocalSearchParams<{
+    officeId?: string;
+    officeLabel?: string;
+  }>();
   const router = useRouter();
   const { session, signOut } = useAuthSession();
   const accessToken = session?.tokens.accessToken;
   const isInspector = session?.user.role === "inspector";
+  const selectedOfficeId =
+    typeof officeId === "string" && officeId.trim().length > 0
+      ? officeId
+      : undefined;
+  const selectedOfficeLabel =
+    typeof officeLabel === "string" && officeLabel.trim().length > 0
+      ? officeLabel
+      : null;
   const [nativeMapModule, setNativeMapModule] =
     useState<NativeMapModule | null>(null);
   const [isNativeMapUnavailable, setIsNativeMapUnavailable] = useState(false);
@@ -136,6 +158,7 @@ export default function InspectionMapScreen() {
       try {
         const nextPoints = await listInspectionMapPoints({
           accessToken,
+          ...(selectedOfficeId ? { officeId: selectedOfficeId } : {}),
         });
 
         setPoints(nextPoints);
@@ -159,7 +182,7 @@ export default function InspectionMapScreen() {
         setIsRefreshing(false);
       }
     },
-    [accessToken, isInspector, router, signOut],
+    [accessToken, isInspector, router, selectedOfficeId, signOut],
   );
 
   useEffect(() => {
@@ -221,43 +244,55 @@ export default function InspectionMapScreen() {
           />
         }
       >
-        <View style={styles.heroCard}>
-          <Text style={styles.kicker}>Inspection map</Text>
-          <Text style={styles.title}>Scoped field pins</Text>
-          <Text style={styles.subtitle}>
-            The map only renders coordinates returned inside your current API
-            scope.
-          </Text>
-        </View>
+        <AppHero
+          eyebrow="Inspection map"
+          title={selectedOfficeLabel ? "Office map pins" : "Scoped field pins"}
+          description={
+            selectedOfficeLabel
+              ? `Showing coordinates only for ${selectedOfficeLabel}.`
+              : "The map only renders coordinates returned inside your current API scope."
+          }
+          trailing={<StatusBadge label={`${points.length} pins`} tone="info" />}
+        />
+
+        {selectedOfficeLabel ? (
+          <SurfaceCard tone="muted">
+            <SectionHeading
+              title="Office scope"
+              description={selectedOfficeLabel}
+            />
+          </SurfaceCard>
+        ) : null}
 
         {isLoading ? (
-          <View style={styles.centeredState}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.stateTitle}>Loading map</Text>
-            <Text style={styles.stateBody}>
-              Pulling scoped inspection coordinates.
-            </Text>
-          </View>
+          <AppStateCard
+            description="Pulling scoped inspection coordinates."
+            loading
+            title="Loading map"
+          />
         ) : null}
 
         {!isLoading && error ? (
-          <View style={styles.card}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
+          <AppStateCard
+            description={error}
+            title="Map unavailable"
+            tone="accent"
+          />
         ) : null}
 
         {!isLoading && !error && points.length === 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.stateTitle}>No map points yet</Text>
-            <Text style={styles.stateBody}>
-              Coordinates will appear here after scoped inspections capture
-              field location.
-            </Text>
-          </View>
+          <AppStateCard
+            description="Coordinates will appear here after scoped inspections capture field location."
+            title="No map points yet"
+          />
         ) : null}
 
         {!isLoading && !error && mapRegion ? (
-          <View style={styles.card}>
+          <SurfaceCard>
+            <SectionHeading
+              title="Field map"
+              description="Tap any pin to preview the business and jump into navigation or the inspection workspace."
+            />
             {hasNativeMap && NativeMapView && NativeMarker ? (
               <NativeMapView initialRegion={mapRegion} style={styles.map}>
                 {points.map((point) => (
@@ -310,44 +345,48 @@ export default function InspectionMapScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </SurfaceCard>
         ) : null}
 
         {!isLoading && !error && selectedPoint ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              {selectedPoint.business.businessName}
-            </Text>
-            <Text style={styles.sectionBody}>
-              {selectedPoint.office.name} · {selectedPoint.office.code}
-            </Text>
-            <Text style={styles.sectionBody}>
-              Status {selectedPoint.status.replace("_", " ")}
-            </Text>
+          <SurfaceCard>
+            <SectionHeading
+              title={selectedPoint.business.businessName}
+              description={`${selectedPoint.office.name} · ${selectedPoint.office.code}`}
+            />
+            <StatusBadge
+              label={selectedPoint.status.replace("_", " ")}
+              tone={
+                selectedPoint.status === "overdue"
+                  ? "danger"
+                  : selectedPoint.status === "completed"
+                    ? "success"
+                    : selectedPoint.status === "in_progress"
+                      ? "warning"
+                      : "info"
+              }
+            />
             <View style={styles.actionRow}>
-              <Pressable
-                accessibilityRole="button"
-                style={styles.primaryButton}
+              <AppButton
+                fullWidth
+                label="Open inspection"
                 onPress={() => {
                   router.push({
                     pathname: "/inspections/[inspectionId]",
                     params: { inspectionId: selectedPoint.id },
                   });
                 }}
-              >
-                <Text style={styles.primaryButtonLabel}>Open inspection</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                style={styles.secondaryButton}
+              />
+              <AppButton
+                fullWidth
+                label="Open in maps"
+                tone="secondary"
                 onPress={() => {
                   void Linking.openURL(createGoogleMapsLink(selectedPoint));
                 }}
-              >
-                <Text style={styles.secondaryButtonLabel}>Open in maps</Text>
-              </Pressable>
+              />
             </View>
-          </View>
+          </SurfaceCard>
         ) : null}
       </ScrollView>
     </SafeAreaView>
@@ -362,29 +401,7 @@ const styles = StyleSheet.create({
   content: {
     padding: SPACING.lg,
     gap: SPACING.lg,
-  },
-  heroCard: {
-    borderRadius: 24,
-    padding: SPACING.lg,
-    backgroundColor: COLORS.secondary,
-    gap: SPACING.sm,
-  },
-  kicker: {
-    color: COLORS.primaryMuted,
-    fontSize: 14,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  title: {
-    color: COLORS.surface,
-    fontSize: 28,
-    fontWeight: "700",
-  },
-  subtitle: {
-    color: COLORS.surface,
-    fontSize: 15,
-    lineHeight: 22,
+    paddingBottom: SPACING.xxl,
   },
   centeredState: {
     alignItems: "center",
@@ -392,16 +409,10 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     padding: SPACING.xl,
   },
-  card: {
-    borderRadius: 24,
-    padding: SPACING.lg,
-    backgroundColor: COLORS.surface,
-    gap: SPACING.md,
-  },
   map: {
     width: "100%",
     height: 320,
-    borderRadius: 18,
+    borderRadius: RADIUS.md,
   },
   fallbackMap: {
     gap: SPACING.md,
@@ -410,11 +421,11 @@ const styles = StyleSheet.create({
     position: "relative",
     width: "100%",
     height: 320,
-    borderRadius: 18,
+    borderRadius: RADIUS.md,
     backgroundColor: COLORS.primaryMuted,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.borderStrong,
   },
   fallbackPin: {
     position: "absolute",
@@ -427,49 +438,13 @@ const styles = StyleSheet.create({
     borderColor: COLORS.surface,
   },
   mapHint: {
-    color: COLORS.mutedText,
+    color: COLORS.textSubtle,
     fontSize: 13,
     lineHeight: 18,
   },
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  sectionBody: {
-    color: COLORS.mutedText,
-    fontSize: 14,
-    lineHeight: 20,
-  },
   actionRow: {
-    flexDirection: "row",
+    flexDirection: "column",
     gap: SPACING.md,
-  },
-  primaryButton: {
-    flex: 1,
-    borderRadius: 16,
-    backgroundColor: COLORS.primary,
-    paddingVertical: SPACING.md,
-    alignItems: "center",
-  },
-  primaryButtonLabel: {
-    color: COLORS.surface,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  secondaryButton: {
-    flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: SPACING.md,
-    alignItems: "center",
-    backgroundColor: COLORS.surface,
-  },
-  secondaryButtonLabel: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: "700",
   },
   stateTitle: {
     color: COLORS.text,
@@ -478,8 +453,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   stateBody: {
-    color: COLORS.mutedText,
-    fontSize: 14,
+    color: COLORS.textSubtle,
+    fontSize: TYPOGRAPHY.label,
     lineHeight: 20,
     textAlign: "center",
   },

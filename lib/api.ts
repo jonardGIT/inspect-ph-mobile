@@ -8,11 +8,18 @@ import type {
   AttachmentUploadIntent,
   AuthTokens,
   ChecklistTemplateRecord,
+  CreatePublicIssueReportInput,
+  FireSafetyCertificateRecord,
   FindingRecord,
   InspectionChecklistResultRecord,
   InspectionMapPoint,
   InspectionRecord,
   InspectionSummary,
+  IssueReportRecord,
+  ModuleRecord,
+  OfficeModuleRecord,
+  PaymentRecord,
+  PublicPermitLookupRecord,
   User,
 } from "../../shared/types/api";
 
@@ -146,11 +153,42 @@ export async function login(input: {
 
 export async function getInspectionSummary(
   accessToken: string,
+  officeId?: string,
 ): Promise<InspectionSummary> {
+  const params = new URLSearchParams();
+
+  if (officeId) {
+    params.set("officeId", officeId);
+  }
+
   const payload = await request<ApiResponse<InspectionSummary>>(
-    "/inspections/summary",
+    `/inspections/summary${params.toString() ? `?${params.toString()}` : ""}`,
     undefined,
     accessToken,
+  );
+
+  return payload.data;
+}
+
+export async function createPublicIssueReport(
+  input: CreatePublicIssueReportInput,
+): Promise<IssueReportRecord> {
+  const payload = await request<ApiResponse<IssueReportRecord>>(
+    "/issue-reports/public",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+
+  return payload.data;
+}
+
+export async function getPublicIssueReportByNumber(
+  reportNumber: string,
+): Promise<IssueReportRecord> {
+  const payload = await request<ApiResponse<IssueReportRecord>>(
+    `/issue-reports/public/${encodeURIComponent(reportNumber)}`,
   );
 
   return payload.data;
@@ -210,6 +248,83 @@ export async function listInspectionMapPoints(input: {
   );
 
   return payload.data;
+}
+
+export async function getFireSafetyCertificateByInspection(
+  accessToken: string,
+  inspectionId: string,
+): Promise<FireSafetyCertificateRecord> {
+  const payload = await request<ApiResponse<FireSafetyCertificateRecord>>(
+    `/fire-safety-certificates/inspection/${inspectionId}`,
+    undefined,
+    accessToken,
+  );
+
+  return payload.data;
+}
+
+export async function listModules(input: {
+  accessToken: string;
+  isActive?: boolean;
+  limit?: number;
+  page?: number;
+  search?: string;
+}): Promise<ApiListResponse<ModuleRecord>> {
+  const params = new URLSearchParams();
+
+  if (typeof input.isActive === "boolean") {
+    params.set("isActive", String(input.isActive));
+  }
+
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+
+  if (input.page) {
+    params.set("page", String(input.page));
+  }
+
+  if (input.search) {
+    params.set("search", input.search);
+  }
+
+  return request<ApiListResponse<ModuleRecord>>(
+    `/modules${params.toString() ? `?${params.toString()}` : ""}`,
+    undefined,
+    input.accessToken,
+  );
+}
+
+export async function listOfficeModules(input: {
+  accessToken: string;
+  limit?: number;
+  moduleId?: string;
+  officeId?: string;
+  page?: number;
+}): Promise<ApiListResponse<OfficeModuleRecord>> {
+  const params = new URLSearchParams();
+
+  if (input.limit) {
+    params.set("limit", String(input.limit));
+  }
+
+  if (input.moduleId) {
+    params.set("moduleId", input.moduleId);
+  }
+
+  if (input.officeId) {
+    params.set("officeId", input.officeId);
+  }
+
+  if (input.page) {
+    params.set("page", String(input.page));
+  }
+
+  return request<ApiListResponse<OfficeModuleRecord>>(
+    `/office-modules${params.toString() ? `?${params.toString()}` : ""}`,
+    undefined,
+    input.accessToken,
+  );
 }
 
 export async function getInspectionDetail(
@@ -479,4 +594,46 @@ export async function uploadInspectionAttachment(input: {
       ? { accuracyMeters: input.file.accuracyMeters }
       : {}),
   });
+}
+
+export async function registerPushToken(input: {
+  accessToken: string;
+  token: string;
+}): Promise<void> {
+  await request<ApiResponse<unknown>>(
+    "/auth/push-token",
+    {
+      method: "POST",
+      body: JSON.stringify({ token: input.token }),
+    },
+    input.accessToken,
+  );
+}
+
+export async function refreshTokens(input: {
+  refreshToken: string;
+}): Promise<AuthTokens> {
+  const response = await request<ApiResponse<AuthTokens>>("/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({ refreshToken: input.refreshToken }),
+  });
+  return response.data;
+}
+
+export async function getPublicPermitByNumber(input: {
+  permitNumber: string;
+}): Promise<PublicPermitLookupRecord> {
+  const response = await request<ApiResponse<PublicPermitLookupRecord>>(
+    `/permits/public/${encodeURIComponent(input.permitNumber)}`,
+  );
+  return response.data;
+}
+
+export async function getPublicPaymentByReferenceNumber(input: {
+  referenceNumber: string;
+}): Promise<PaymentRecord> {
+  const response = await request<ApiResponse<PaymentRecord>>(
+    `/payments/public/${encodeURIComponent(input.referenceNumber)}`,
+  );
+  return response.data;
 }

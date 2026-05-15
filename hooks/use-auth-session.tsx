@@ -1,7 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import * as SecureStore from "expo-secure-store";
 
-import { login, type AuthSession } from "@/lib/api";
+import {
+  ApiRequestError,
+  login,
+  refreshTokens,
+  registerPushToken,
+  type AuthSession,
+} from "@/lib/api";
+import { requestPushToken } from "@/lib/notifications/push-token";
 
 const AUTH_SESSION_STORAGE_KEY = "inspect-ph-mobile-session";
 
@@ -11,24 +18,47 @@ interface AuthSessionContextValue {
   session: AuthSession | null;
   signIn: (input: { email: string; password: string }) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Attempt to refresh the access token using the stored refresh token.
+   * Returns the new session on success, or null if refresh fails (caller should sign out). */
+  tryRefreshSession: () => Promise<AuthSession | null>;
 }
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
 
+const ROLE_FALLBACK_PROFILES: Record<
+  string,
+  {
+    accessScope: "global" | "lgu" | "office" | "assigned";
+    label: string;
+    permissions: string[];
+  }
+> = {
+  admin: { accessScope: "global", label: "Administrator", permissions: [] },
+  inspector: { accessScope: "assigned", label: "Inspector", permissions: [] },
+  lgu_admin: {
+    accessScope: "lgu",
+    label: "LGU Administrator",
+    permissions: [],
+  },
+  office_supervisor: {
+    accessScope: "office",
+    label: "Office Supervisor",
+    permissions: [],
+  },
+  office_clerk: {
+    accessScope: "office",
+    label: "Office Clerk",
+    permissions: [],
+  },
+};
+
 function normalizeAuthSession(session: AuthSession): AuthSession {
   const role = session.user.role;
-  const fallbackRoleProfile =
-    role === "admin"
-      ? {
-          accessScope: "global" as const,
-          label: "Administrator",
-          permissions: [],
-        }
-      : {
-          accessScope: "assigned" as const,
-          label: "Inspector",
-          permissions: [],
-        };
+  const fallbackRoleProfile = ROLE_FALLBACK_PROFILES[role] ?? {
+    accessScope: "assigned" as const,
+    label: role,
+    permissions: [],
+  };
 
   return {
     ...session,
@@ -109,6 +139,16 @@ export function AuthSessionProvider({
             JSON.stringify(nextSession),
           );
           setSession(nextSession);
+
+          // Register Expo push token in the background — non-blocking
+          void requestPushToken().then(async (token) => {
+            if (token) {
+              await registerPushToken({
+                accessToken: nextSession.tokens.accessToken,
+                token,
+              });
+            }
+          });
         } finally {
           setIsSigningIn(false);
         }
@@ -116,6 +156,29 @@ export function AuthSessionProvider({
       signOut: async () => {
         await SecureStore.deleteItemAsync(AUTH_SESSION_STORAGE_KEY);
         setSession(null);
+      },
+      tryRefreshSession: async () => {
+        if (!session?.tokens.refreshToken) {
+          return null;
+        }
+        try {
+          const tokens = await refreshTokens({
+            refreshToken: session.tokens.refreshToken,
+          });
+          const nextSession = normalizeAuthSession({ ...session, tokens });
+          await SecureStore.setItemAsync(
+            AUTH_SESSION_STORAGE_KEY,
+            JSON.stringify(nextSession),
+          );
+          setSession(nextSession);
+          return nextSession;
+        } catch (error) {
+          if (error instanceof ApiRequestError && error.status === 401) {
+            await SecureStore.deleteItemAsync(AUTH_SESSION_STORAGE_KEY);
+            setSession(null);
+          }
+          return null;
+        }
       },
     }),
     [isHydrated, isSigningIn, session],

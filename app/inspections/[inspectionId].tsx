@@ -1,23 +1,30 @@
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { COLORS, SPACING } from "@/constants/theme";
+import {
+  AppButton,
+  AppChoicePill,
+  AppHero,
+  AppRecordCard,
+  AppStateCard,
+  AppTextField,
+  InfoRow,
+  SectionHeading,
+  StatusBadge,
+  SurfaceCard,
+} from "@/components/mobile-ui";
+import SyncStatusBar from "@/components/sync-status-bar";
+import { COLORS, SPACING, TYPOGRAPHY } from "@/constants/theme";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import {
   ApiRequestError,
   createInspectionFinding,
+  getFireSafetyCertificateByInspection,
   getInspectionDetail,
   listChecklistTemplates,
   listInspectionAttachments,
@@ -45,6 +52,7 @@ import {
 import type {
   AttachmentRecord,
   ChecklistTemplateRecord,
+  FireSafetyCertificateRecord,
   FindingRecord,
   InspectionChecklistResultRecord,
   InspectionRecord,
@@ -66,6 +74,8 @@ export default function InspectionDetailScreen() {
   const isInspector = session?.user.role === "inspector";
   const isRouteBlocked = Boolean(session) && !isInspector;
   const [inspection, setInspection] = useState<InspectionRecord | null>(null);
+  const [fireSafetyCertificate, setFireSafetyCertificate] =
+    useState<FireSafetyCertificateRecord | null>(null);
   const [checklistTemplates, setChecklistTemplates] = useState<
     ChecklistTemplateRecord[]
   >([]);
@@ -103,7 +113,10 @@ export default function InspectionDetailScreen() {
     string | null
   >(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingCertificate, setIsLoadingCertificate] = useState(false);
+  const [certificateError, setCertificateError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isStale, setIsStale] = useState(false);
 
   function resetFindingDraft() {
     setFindingTitle("");
@@ -154,16 +167,53 @@ export default function InspectionDetailScreen() {
     async function loadInspectionWorkspace() {
       setIsLoading(true);
       setError(null);
+      setCertificateError(null);
+      setIsLoadingCertificate(true);
 
       try {
+        const loadCertificate = async () => {
+          try {
+            return {
+              certificate: await getFireSafetyCertificateByInspection(
+                token,
+                inspectionId,
+              ),
+              errorMessage: null,
+            };
+          } catch (loadError) {
+            if (loadError instanceof ApiRequestError) {
+              if (loadError.status === 401) {
+                throw loadError;
+              }
+
+              if (loadError.status === 404) {
+                return {
+                  certificate: null,
+                  errorMessage: null,
+                };
+              }
+            }
+
+            return {
+              certificate: null,
+              errorMessage:
+                loadError instanceof Error
+                  ? loadError.message
+                  : "Unable to load the FireGuard certificate.",
+            };
+          }
+        };
+
         const [
           detail,
+          certificateResult,
           nextChecklistTemplates,
           nextChecklistResults,
           nextFindings,
           nextAttachments,
         ] = await Promise.all([
           getInspectionDetail(token, inspectionId),
+          loadCertificate(),
           listChecklistTemplates(token),
           listInspectionChecklistResults(token, inspectionId),
           listInspectionFindings(token, inspectionId),
@@ -175,12 +225,19 @@ export default function InspectionDetailScreen() {
         }
 
         setInspection(detail);
+        setFireSafetyCertificate(certificateResult.certificate);
+        setCertificateError(certificateResult.errorMessage);
         setChecklistTemplates(nextChecklistTemplates);
         setChecklistResults(nextChecklistResults);
         setFindings(nextFindings);
         setAttachments(nextAttachments);
         setChecklistDrafts(
           createChecklistDrafts(nextChecklistTemplates, nextChecklistResults),
+        );
+        setIsStale(false);
+        await AsyncStorage.setItem(
+          `inspection:${inspectionId}`,
+          JSON.stringify(detail),
         );
         await loadQueuedFindings();
         await loadQueuedAttachments();
@@ -192,15 +249,28 @@ export default function InspectionDetailScreen() {
         }
 
         if (!isCancelled) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Unable to load inspection details.",
+          const cachedRaw = await AsyncStorage.getItem(
+            `inspection:${inspectionId}`,
           );
+
+          if (cachedRaw) {
+            const cachedDetail = JSON.parse(cachedRaw) as InspectionRecord;
+            setInspection(cachedDetail);
+            setIsStale(true);
+            setError(null);
+          } else {
+            const errorMessage =
+              loadError instanceof Error
+                ? loadError.message
+                : "Unable to load inspection details.";
+
+            setError(errorMessage);
+          }
         }
       } finally {
         if (!isCancelled) {
           setIsLoading(false);
+          setIsLoadingCertificate(false);
         }
       }
     }
@@ -657,114 +727,189 @@ export default function InspectionDetailScreen() {
     checklistTemplates,
     checklistResults,
   );
+  const showFireSafetyCertificateCard =
+    Boolean(fireSafetyCertificate) ||
+    Boolean(certificateError) ||
+    Boolean(inspection?.office.code.toUpperCase().includes("FIRE"));
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
         {isLoading ? (
-          <View style={styles.centeredState}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.stateTitle}>Loading inspection</Text>
-            <Text style={styles.stateBody}>Pulling assigned field data.</Text>
-          </View>
+          <AppStateCard
+            description="Pulling assigned field data."
+            loading
+            title="Loading inspection"
+          />
         ) : null}
 
         {!isLoading && error ? (
-          <View style={styles.card}>
-            <Text style={styles.errorText}>{error}</Text>
-            {isRouteBlocked ? (
-              <Pressable
-                accessibilityRole="button"
-                style={styles.primaryButton}
-                onPress={() => {
-                  router.replace("/");
-                }}
-              >
-                <Text style={styles.primaryButtonLabel}>
-                  Back to mobile home
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
+          <AppStateCard
+            action={
+              isRouteBlocked ? (
+                <AppButton
+                  fullWidth
+                  label="Back to mobile home"
+                  onPress={() => {
+                    router.replace("/");
+                  }}
+                />
+              ) : null
+            }
+            description={error}
+            title="Inspection unavailable"
+            tone="accent"
+          />
         ) : null}
 
         {!isLoading && !error && inspection ? (
           <>
-            <View style={[styles.card, styles.heroCard]}>
-              <Text style={styles.kicker}>Inspection detail</Text>
-              <Text style={styles.heroTitle}>
-                {inspection.business.businessName}
-              </Text>
-              <Text style={styles.heroBody}>
-                Permit {inspection.permit.permitNumber} •{" "}
-                {formatDateTime(inspection.scheduledAt)}
-              </Text>
-              <Text style={styles.heroBody}>
-                Status {inspection.status.replace("_", " ")}
-              </Text>
-              <Text style={styles.heroBody}>
-                {inspection.notes?.trim() || "No field notes yet."}
-              </Text>
+            {isStale ? (
+              <View style={styles.staleBanner}>
+                <Text style={styles.staleBannerText}>
+                  Offline — showing last cached data
+                </Text>
+              </View>
+            ) : null}
+            <SyncStatusBar />
+            <AppHero
+              eyebrow="Inspection detail"
+              title={inspection.business.businessName}
+              description={`Permit ${inspection.permit.permitNumber} · Scheduled ${formatDateTime(inspection.scheduledAt)}`}
+              trailing={
+                <StatusBadge
+                  label={inspection.status.replace("_", " ")}
+                  tone={getStatusTone(inspection.status)}
+                />
+              }
+            />
+
+            <SurfaceCard tone="muted">
+              <SectionHeading
+                title="Inspection summary"
+                description={inspection.notes?.trim() || "No field notes yet."}
+              />
+              <InfoRow
+                label="Office"
+                value={`${inspection.office.name} · ${inspection.office.code}`}
+              />
+              <InfoRow
+                label="Scheduled"
+                value={formatDateTime(inspection.scheduledAt)}
+              />
+              <InfoRow label="Permit" value={inspection.permit.permitNumber} />
+            </SurfaceCard>
+
+            <SurfaceCard>
+              <SectionHeading
+                title="Field actions"
+                description="Advance the inspection state with live GPS capture from the device."
+              />
               <View style={styles.actionRow}>
                 {inspection.status === "scheduled" ? (
-                  <Pressable
-                    accessibilityRole="button"
+                  <AppButton
                     disabled={isUpdatingStatus}
-                    style={[
-                      styles.primaryButton,
-                      isUpdatingStatus && styles.buttonDisabled,
-                    ]}
+                    fullWidth
+                    label={
+                      isUpdatingStatus ? "Capturing GPS..." : "Start inspection"
+                    }
                     onPress={() => {
                       void handleStatusAdvance("in_progress");
                     }}
-                  >
-                    <Text style={styles.primaryButtonLabel}>
-                      {isUpdatingStatus
-                        ? "Capturing GPS..."
-                        : "Start inspection"}
-                    </Text>
-                  </Pressable>
+                  />
                 ) : null}
                 {inspection.status === "in_progress" ? (
-                  <Pressable
-                    accessibilityRole="button"
+                  <AppButton
                     disabled={isUpdatingStatus}
-                    style={[
-                      styles.primaryButton,
-                      isUpdatingStatus && styles.buttonDisabled,
-                    ]}
+                    fullWidth
+                    label={
+                      isUpdatingStatus
+                        ? "Capturing GPS..."
+                        : "Complete inspection"
+                    }
                     onPress={() => {
                       void handleStatusAdvance("completed");
                     }}
-                  >
-                    <Text style={styles.primaryButtonLabel}>
-                      {isUpdatingStatus
-                        ? "Capturing GPS..."
-                        : "Complete inspection"}
-                    </Text>
-                  </Pressable>
+                  />
                 ) : null}
               </View>
               {statusError ? (
                 <Text style={styles.errorText}>{statusError}</Text>
               ) : null}
-            </View>
+            </SurfaceCard>
 
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Geo capture</Text>
-              <Text style={styles.sectionBody}>
-                {inspection.location
-                  ? `${inspection.location.latitude.toFixed(5)}, ${inspection.location.longitude.toFixed(5)}${inspection.location.accuracyMeters ? ` • ${inspection.location.accuracyMeters}m accuracy` : ""}`
-                  : "No location captured yet for this inspection."}
-              </Text>
-            </View>
+            <SurfaceCard tone="muted">
+              <SectionHeading
+                title="Geo capture"
+                description={
+                  inspection.location
+                    ? `${inspection.location.latitude.toFixed(5)}, ${inspection.location.longitude.toFixed(5)}${inspection.location.accuracyMeters ? ` · ${inspection.location.accuracyMeters}m accuracy` : ""}`
+                    : "No location captured yet for this inspection."
+                }
+              />
+            </SurfaceCard>
 
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Checklist</Text>
-              <Text style={styles.sectionBody}>
-                Save each checkpoint as you work. Existing results stay
-                editable.
-              </Text>
+            {showFireSafetyCertificateCard ? (
+              <SurfaceCard>
+                <SectionHeading
+                  title="Fire safety certificate"
+                  description="Current FireGuard certificate linked to this inspection, when available."
+                />
+                {isLoadingCertificate ? (
+                  <Text style={styles.sectionBody}>
+                    Loading the current FireGuard certificate.
+                  </Text>
+                ) : null}
+                {certificateError ? (
+                  <Text style={styles.errorText}>{certificateError}</Text>
+                ) : null}
+                {!isLoadingCertificate &&
+                !certificateError &&
+                !fireSafetyCertificate ? (
+                  <Text style={styles.sectionBody}>
+                    No fire safety certificate has been issued for this
+                    inspection yet.
+                  </Text>
+                ) : null}
+                {fireSafetyCertificate ? (
+                  <AppRecordCard
+                    title={fireSafetyCertificate.certificateNumber}
+                    trailing={
+                      <StatusBadge
+                        label={fireSafetyCertificate.status.replace("_", " ")}
+                        tone={getCertificateTone(fireSafetyCertificate.status)}
+                      />
+                    }
+                  >
+                    <InfoRow
+                      label="Issued"
+                      value={formatDateTime(fireSafetyCertificate.issuedAt)}
+                    />
+                    <InfoRow
+                      label="Expires"
+                      value={formatDateTime(fireSafetyCertificate.expiresAt)}
+                    />
+                    <InfoRow
+                      label="Permit"
+                      value={
+                        fireSafetyCertificate.inspection.permit.permitNumber
+                      }
+                    />
+                    {fireSafetyCertificate.remarks ? (
+                      <Text style={styles.sectionBody}>
+                        {fireSafetyCertificate.remarks}
+                      </Text>
+                    ) : null}
+                  </AppRecordCard>
+                ) : null}
+              </SurfaceCard>
+            ) : null}
+
+            <SurfaceCard>
+              <SectionHeading
+                title="Checklist"
+                description="Save each checkpoint as you work. Existing results stay editable."
+              />
               {checklistError ? (
                 <Text style={styles.errorText}>{checklistError}</Text>
               ) : null}
@@ -780,23 +925,30 @@ export default function InspectionDetailScreen() {
                   };
 
                   return (
-                    <View key={item.template.id} style={styles.rowItem}>
-                      <Text style={styles.rowTitle}>{item.template.title}</Text>
-                      <Text style={styles.rowMeta}>
-                        {item.result
-                          ? `Saved as ${item.result.status.replace("_", " ")}`
-                          : "Pending response"}
-                      </Text>
+                    <AppRecordCard
+                      key={item.template.id}
+                      title={item.template.title}
+                      trailing={
+                        <StatusBadge
+                          label={
+                            item.result
+                              ? item.result.status.replace("_", " ")
+                              : "Pending"
+                          }
+                          tone={
+                            item.result
+                              ? getChecklistTone(item.result.status)
+                              : "default"
+                          }
+                        />
+                      }
+                    >
                       <View style={styles.segmentRow}>
                         {CHECKLIST_STATUS_OPTIONS.map((option) => (
-                          <Pressable
+                          <AppChoicePill
                             key={option}
-                            accessibilityRole="button"
-                            style={[
-                              styles.segmentButton,
-                              draft.status === option &&
-                                styles.segmentButtonActive,
-                            ]}
+                            label={option.replace("_", " ")}
+                            selected={draft.status === option}
                             onPress={() => {
                               setChecklistDrafts((currentDrafts) => ({
                                 ...currentDrafts,
@@ -808,24 +960,12 @@ export default function InspectionDetailScreen() {
                                 },
                               }));
                             }}
-                          >
-                            <Text
-                              style={[
-                                styles.segmentButtonLabel,
-                                draft.status === option &&
-                                  styles.segmentButtonLabelActive,
-                              ]}
-                            >
-                              {option.replace("_", " ")}
-                            </Text>
-                          </Pressable>
+                          />
                         ))}
                       </View>
-                      <TextInput
+                      <AppTextField
                         multiline
                         placeholder="Inspector remarks"
-                        placeholderTextColor={COLORS.mutedText}
-                        style={styles.input}
                         value={draft.remarks}
                         onChangeText={(value) => {
                           setChecklistDrafts((currentDrafts) => ({
@@ -839,162 +979,129 @@ export default function InspectionDetailScreen() {
                           }));
                         }}
                       />
-                      <Pressable
-                        accessibilityRole="button"
+                      <AppButton
                         disabled={savingTemplateId === item.template.id}
-                        style={[
-                          styles.secondaryButton,
-                          savingTemplateId === item.template.id &&
-                            styles.buttonDisabled,
-                        ]}
+                        fullWidth
                         onPress={() => {
                           void handleChecklistSave(item.template);
                         }}
-                      >
-                        <Text style={styles.secondaryButtonLabel}>
-                          {savingTemplateId === item.template.id
+                        label={
+                          savingTemplateId === item.template.id
                             ? "Saving..."
-                            : "Save checklist item"}
-                        </Text>
-                      </Pressable>
-                    </View>
+                            : "Save checklist item"
+                        }
+                        tone="secondary"
+                      />
+                    </AppRecordCard>
                   );
                 })
               )}
-            </View>
+            </SurfaceCard>
 
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Findings</Text>
-              <TextInput
+            <SurfaceCard>
+              <SectionHeading
+                title="Findings"
+                description="Record field issues with severity and optional corrective action."
+              />
+              <AppTextField
+                label="Finding title"
                 placeholder="Finding title"
-                placeholderTextColor={COLORS.mutedText}
-                style={styles.input}
                 value={findingTitle}
                 onChangeText={setFindingTitle}
               />
-              <TextInput
+              <AppTextField
+                label="Finding description"
                 multiline
                 placeholder="Finding description"
-                placeholderTextColor={COLORS.mutedText}
-                style={[styles.input, styles.multilineInput]}
                 value={findingDescription}
                 onChangeText={setFindingDescription}
               />
-              <TextInput
+              <AppTextField
+                label="Corrective action"
                 placeholder="Corrective action"
-                placeholderTextColor={COLORS.mutedText}
-                style={styles.input}
                 value={findingCorrectiveAction}
                 onChangeText={setFindingCorrectiveAction}
               />
               <View style={styles.segmentRow}>
                 {FINDING_SEVERITIES.map((severity) => (
-                  <Pressable
+                  <AppChoicePill
                     key={severity}
-                    accessibilityRole="button"
-                    style={[
-                      styles.segmentButton,
-                      findingSeverity === severity &&
-                        styles.segmentButtonActive,
-                    ]}
+                    label={severity}
+                    selected={findingSeverity === severity}
                     onPress={() => {
                       setFindingSeverity(severity);
                     }}
-                  >
-                    <Text
-                      style={[
-                        styles.segmentButtonLabel,
-                        findingSeverity === severity &&
-                          styles.segmentButtonLabelActive,
-                      ]}
-                    >
-                      {severity}
-                    </Text>
-                  </Pressable>
+                  />
                 ))}
               </View>
-              <Pressable
-                accessibilityRole="button"
+              <AppButton
                 disabled={isCreatingFinding}
-                style={[
-                  styles.primaryButton,
-                  isCreatingFinding && styles.buttonDisabled,
-                ]}
+                fullWidth
+                label={
+                  isCreatingFinding
+                    ? "Capturing GPS..."
+                    : "Create finding with GPS"
+                }
                 onPress={() => {
                   void handleCreateFinding();
                 }}
-              >
-                <Text style={styles.primaryButtonLabel}>
-                  {isCreatingFinding
-                    ? "Capturing GPS..."
-                    : "Create finding with GPS"}
-                </Text>
-              </Pressable>
+              />
               {findingError ? (
                 <Text style={styles.errorText}>{findingError}</Text>
               ) : null}
               {queuedFindings.length > 0 ? (
-                <View style={styles.syncCard}>
-                  <Text style={styles.syncTitle}>Sync status</Text>
-                  <Text style={styles.sectionBody}>
-                    {queuedFindings.length} finding
-                    {queuedFindings.length === 1 ? "" : "s"} waiting for retry.
-                  </Text>
-                  <Pressable
-                    accessibilityRole="button"
+                <SurfaceCard tone="muted" style={styles.nestedCard}>
+                  <SectionHeading
+                    title="Sync status"
+                    description={`${queuedFindings.length} finding${queuedFindings.length === 1 ? "" : "s"} waiting for retry.`}
+                  />
+                  <AppButton
                     disabled={Boolean(retryingFindingId)}
-                    style={[
-                      styles.secondaryButton,
-                      Boolean(retryingFindingId) && styles.buttonDisabled,
-                    ]}
+                    fullWidth
+                    label={
+                      retryingFindingId
+                        ? "Retrying..."
+                        : "Retry pending findings"
+                    }
                     onPress={() => {
                       void handleRetryAllQueuedFindings();
                     }}
-                  >
-                    <Text style={styles.secondaryButtonLabel}>
-                      {retryingFindingId
-                        ? "Retrying..."
-                        : "Retry pending findings"}
-                    </Text>
-                  </Pressable>
+                    tone="secondary"
+                  />
                   {queuedFindings.map((item) => (
-                    <View key={item.id} style={styles.queuedRow}>
-                      <View style={styles.queuedBody}>
-                        <Text style={styles.rowTitle}>{item.title}</Text>
-                        <Text style={styles.rowMeta}>
-                          {item.status === "pending"
-                            ? "Pending sync"
-                            : "Retry failed"}{" "}
-                          • Attempt {item.retryCount + 1}
-                        </Text>
-                        <Text style={styles.rowMeta}>
-                          Severity {item.severity} • Queued{" "}
-                          {formatDateTime(item.queuedAt)}
-                        </Text>
-                        {item.lastError ? (
-                          <Text style={styles.errorText}>{item.lastError}</Text>
-                        ) : null}
-                      </View>
-                      <Pressable
-                        accessibilityRole="button"
-                        disabled={retryingFindingId === item.id}
-                        style={[
-                          styles.secondaryButton,
-                          styles.inlineButton,
-                          retryingFindingId === item.id &&
-                            styles.buttonDisabled,
-                        ]}
-                        onPress={() => {
-                          void handleRetryQueuedFinding(item);
-                        }}
-                      >
-                        <Text style={styles.secondaryButtonLabel}>
-                          {retryingFindingId === item.id ? "Retrying" : "Retry"}
-                        </Text>
-                      </Pressable>
-                    </View>
+                    <AppRecordCard
+                      key={item.id}
+                      style={styles.queuedRow}
+                      title={item.title}
+                      trailing={
+                        <AppButton
+                          disabled={retryingFindingId === item.id}
+                          label={
+                            retryingFindingId === item.id ? "Retrying" : "Retry"
+                          }
+                          onPress={() => {
+                            void handleRetryQueuedFinding(item);
+                          }}
+                          tone="secondary"
+                        />
+                      }
+                    >
+                      <Text style={styles.rowMeta}>
+                        {item.status === "pending"
+                          ? "Pending sync"
+                          : "Retry failed"}{" "}
+                        · Attempt {item.retryCount + 1}
+                      </Text>
+                      <Text style={styles.rowMeta}>
+                        Severity {item.severity} · Queued{" "}
+                        {formatDateTime(item.queuedAt)}
+                      </Text>
+                      {item.lastError ? (
+                        <Text style={styles.errorText}>{item.lastError}</Text>
+                      ) : null}
+                    </AppRecordCard>
                   ))}
-                </View>
+                </SurfaceCard>
               ) : null}
               {findings.length === 0 ? (
                 <Text style={styles.sectionBody}>
@@ -1002,122 +1109,110 @@ export default function InspectionDetailScreen() {
                 </Text>
               ) : (
                 findings.map((finding) => (
-                  <View key={finding.id} style={styles.rowItem}>
-                    <Text style={styles.rowTitle}>{finding.title}</Text>
+                  <AppRecordCard
+                    key={finding.id}
+                    title={finding.title}
+                    trailing={
+                      <StatusBadge
+                        label={finding.severity}
+                        tone={getSeverityTone(finding.severity)}
+                      />
+                    }
+                  >
                     <Text style={styles.rowMeta}>
-                      Severity {finding.severity} •{" "}
                       {finding.resolvedAt ? "Resolved" : "Open"}
                     </Text>
                     <Text style={styles.rowMeta}>{finding.description}</Text>
-                  </View>
+                    {finding.correctiveAction ? (
+                      <Text style={styles.sectionBody}>
+                        Corrective action: {finding.correctiveAction}
+                      </Text>
+                    ) : null}
+                  </AppRecordCard>
                 ))
               )}
-            </View>
+            </SurfaceCard>
 
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Attachments</Text>
-              <Text style={styles.sectionBody}>
-                Capture evidence photos in the field or attach them from the
-                device library.
-              </Text>
+            <SurfaceCard>
+              <SectionHeading
+                title="Attachments"
+                description="Capture evidence photos in the field or attach them from the device library."
+              />
               {queuedAttachments.length > 0 ? (
-                <View style={styles.syncCard}>
-                  <Text style={styles.syncTitle}>Sync status</Text>
-                  <Text style={styles.sectionBody}>
-                    {queuedAttachments.length} attachment
-                    {queuedAttachments.length === 1 ? "" : "s"} waiting for
-                    retry.
-                  </Text>
-                  <Pressable
-                    accessibilityRole="button"
+                <SurfaceCard tone="muted" style={styles.nestedCard}>
+                  <SectionHeading
+                    title="Sync status"
+                    description={`${queuedAttachments.length} attachment${queuedAttachments.length === 1 ? "" : "s"} waiting for retry.`}
+                  />
+                  <AppButton
                     disabled={Boolean(retryingAttachmentId)}
-                    style={[
-                      styles.secondaryButton,
-                      Boolean(retryingAttachmentId) && styles.buttonDisabled,
-                    ]}
+                    fullWidth
+                    label={
+                      retryingAttachmentId
+                        ? "Retrying..."
+                        : "Retry pending uploads"
+                    }
                     onPress={() => {
                       void handleRetryAllQueuedAttachments();
                     }}
-                  >
-                    <Text style={styles.secondaryButtonLabel}>
-                      {retryingAttachmentId
-                        ? "Retrying..."
-                        : "Retry pending uploads"}
-                    </Text>
-                  </Pressable>
+                    tone="secondary"
+                  />
                   {queuedAttachments.map((item) => (
-                    <View key={item.id} style={styles.queuedRow}>
-                      <View style={styles.queuedBody}>
-                        <Text style={styles.rowTitle}>{item.fileName}</Text>
-                        <Text style={styles.rowMeta}>
-                          {item.status === "pending"
-                            ? "Pending sync"
-                            : "Retry failed"}{" "}
-                          • Attempt {item.retryCount + 1}
-                        </Text>
-                        <Text style={styles.rowMeta}>
-                          Queued {formatDateTime(item.queuedAt)}
-                        </Text>
-                        {item.lastError ? (
-                          <Text style={styles.errorText}>{item.lastError}</Text>
-                        ) : null}
-                      </View>
-                      <Pressable
-                        accessibilityRole="button"
-                        disabled={retryingAttachmentId === item.id}
-                        style={[
-                          styles.secondaryButton,
-                          styles.inlineButton,
-                          retryingAttachmentId === item.id &&
-                            styles.buttonDisabled,
-                        ]}
-                        onPress={() => {
-                          void handleRetryQueuedAttachment(item);
-                        }}
-                      >
-                        <Text style={styles.secondaryButtonLabel}>
-                          {retryingAttachmentId === item.id
-                            ? "Retrying"
-                            : "Retry"}
-                        </Text>
-                      </Pressable>
-                    </View>
+                    <AppRecordCard
+                      key={item.id}
+                      style={styles.queuedRow}
+                      title={item.fileName}
+                      trailing={
+                        <AppButton
+                          disabled={retryingAttachmentId === item.id}
+                          label={
+                            retryingAttachmentId === item.id
+                              ? "Retrying"
+                              : "Retry"
+                          }
+                          onPress={() => {
+                            void handleRetryQueuedAttachment(item);
+                          }}
+                          tone="secondary"
+                        />
+                      }
+                    >
+                      <Text style={styles.rowMeta}>
+                        {item.status === "pending"
+                          ? "Pending sync"
+                          : "Retry failed"}{" "}
+                        · Attempt {item.retryCount + 1}
+                      </Text>
+                      <Text style={styles.rowMeta}>
+                        Queued {formatDateTime(item.queuedAt)}
+                      </Text>
+                      {item.lastError ? (
+                        <Text style={styles.errorText}>{item.lastError}</Text>
+                      ) : null}
+                    </AppRecordCard>
                   ))}
-                </View>
+                </SurfaceCard>
               ) : null}
-              <View style={styles.segmentRow}>
-                <Pressable
-                  accessibilityRole="button"
+              <View style={styles.buttonRow}>
+                <AppButton
                   disabled={isUploadingAttachment}
-                  style={[
-                    styles.primaryButton,
-                    styles.flexButton,
-                    isUploadingAttachment && styles.buttonDisabled,
-                  ]}
+                  label={
+                    isUploadingAttachment ? "Uploading..." : "Capture photo"
+                  }
                   onPress={() => {
                     void handleAttachmentUpload("camera");
                   }}
-                >
-                  <Text style={styles.primaryButtonLabel}>
-                    {isUploadingAttachment ? "Uploading..." : "Capture photo"}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
+                  style={styles.rowButton}
+                />
+                <AppButton
                   disabled={isUploadingAttachment}
-                  style={[
-                    styles.secondaryButton,
-                    styles.flexButton,
-                    isUploadingAttachment && styles.buttonDisabled,
-                  ]}
+                  label="Attach from library"
                   onPress={() => {
                     void handleAttachmentUpload("library");
                   }}
-                >
-                  <Text style={styles.secondaryButtonLabel}>
-                    Attach from library
-                  </Text>
-                </Pressable>
+                  style={styles.rowButton}
+                  tone="secondary"
+                />
               </View>
               {attachmentError ? (
                 <Text style={styles.errorText}>{attachmentError}</Text>
@@ -1128,32 +1223,28 @@ export default function InspectionDetailScreen() {
                 </Text>
               ) : (
                 attachments.map((attachment) => (
-                  <View key={attachment.id} style={styles.rowItem}>
-                    <View style={styles.attachmentHeaderRow}>
+                  <AppRecordCard
+                    key={attachment.id}
+                    title={attachment.fileName}
+                    trailing={
                       <View style={styles.attachmentPreviewShell}>
                         <Text style={styles.attachmentPreviewLabel}>IMG</Text>
                       </View>
-                      <View style={styles.attachmentBody}>
-                        <Text style={styles.rowTitle}>
-                          {attachment.fileName}
-                        </Text>
-                        <Text style={styles.rowMeta}>
-                          {attachment.mimeType}
-                        </Text>
-                        <Text style={styles.rowMeta}>
-                          {(attachment.fileSizeBytes / 1024).toFixed(1)} KB
-                        </Text>
-                        <Text style={styles.rowMeta}>
-                          {attachment.capturedAt
-                            ? `Captured ${formatDateTime(attachment.capturedAt)}`
-                            : `Uploaded ${formatDateTime(attachment.createdAt)}`}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
+                    }
+                  >
+                    <Text style={styles.rowMeta}>{attachment.mimeType}</Text>
+                    <Text style={styles.rowMeta}>
+                      {(attachment.fileSizeBytes / 1024).toFixed(1)} KB
+                    </Text>
+                    <Text style={styles.rowMeta}>
+                      {attachment.capturedAt
+                        ? `Captured ${formatDateTime(attachment.capturedAt)}`
+                        : `Uploaded ${formatDateTime(attachment.createdAt)}`}
+                    </Text>
+                  </AppRecordCard>
                 ))
               )}
-            </View>
+            </SurfaceCard>
           </>
         ) : null}
       </ScrollView>
@@ -1242,14 +1333,81 @@ function resolveAttachmentFileName(
   return `${source}-${Date.now()}.${extension}`;
 }
 
+function getStatusTone(status: InspectionRecord["status"]) {
+  if (status === "overdue") {
+    return "danger" as const;
+  }
+
+  if (status === "completed") {
+    return "success" as const;
+  }
+
+  if (status === "in_progress") {
+    return "warning" as const;
+  }
+
+  return "info" as const;
+}
+
+function getChecklistTone(status: ChecklistStatus) {
+  if (status === "pass") {
+    return "success" as const;
+  }
+
+  if (status === "fail") {
+    return "danger" as const;
+  }
+
+  return "default" as const;
+}
+
+function getSeverityTone(severity: FindingSeverity) {
+  if (severity === "critical" || severity === "high") {
+    return "danger" as const;
+  }
+
+  if (severity === "medium") {
+    return "warning" as const;
+  }
+
+  return "info" as const;
+}
+
+function getCertificateTone(status: FireSafetyCertificateRecord["status"]) {
+  if (status === "expired" || status === "revoked") {
+    return "danger" as const;
+  }
+
+  if (status === "issued") {
+    return "success" as const;
+  }
+
+  return "warning" as const;
+}
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  staleBanner: {
+    backgroundColor: "#fef3c7",
+    borderColor: "#f59e0b",
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  staleBannerText: {
+    color: "#92400e",
+    fontSize: TYPOGRAPHY.label,
+    textAlign: "center",
+  },
   content: {
     padding: SPACING.lg,
-    gap: SPACING.md,
+    gap: SPACING.lg,
+    paddingBottom: SPACING.xxl,
   },
   centeredState: {
     alignItems: "center",
@@ -1257,144 +1415,49 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingVertical: SPACING.xxl,
   },
-  card: {
-    borderRadius: 24,
-    padding: SPACING.lg,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.sm,
-  },
-  heroCard: {
-    backgroundColor: COLORS.text,
-    borderColor: COLORS.text,
-  },
-  kicker: {
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: COLORS.primaryMuted,
-  },
-  heroTitle: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: COLORS.surface,
-  },
-  heroBody: {
-    fontSize: 15,
-    color: COLORS.primaryMuted,
-    lineHeight: 22,
-  },
-  sectionTitle: {
-    fontSize: 19,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
   sectionBody: {
-    fontSize: 14,
-    color: COLORS.mutedText,
+    fontSize: TYPOGRAPHY.label,
+    color: COLORS.textSubtle,
     lineHeight: 20,
-  },
-  rowItem: {
-    borderRadius: 18,
-    padding: SPACING.md,
-    backgroundColor: COLORS.background,
-    gap: SPACING.xs,
   },
   actionRow: {
     gap: SPACING.sm,
-    marginTop: SPACING.sm,
   },
-  flexButton: {
+  buttonRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+  },
+  rowButton: {
     flex: 1,
+    minWidth: 148,
   },
   rowTitle: {
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: TYPOGRAPHY.body,
+    fontWeight: "800",
     color: COLORS.text,
   },
   rowMeta: {
-    fontSize: 14,
-    color: COLORS.mutedText,
+    fontSize: TYPOGRAPHY.label,
+    color: COLORS.textSubtle,
     lineHeight: 20,
   },
   stateTitle: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: TYPOGRAPHY.title,
+    fontWeight: "800",
     color: COLORS.text,
+    textAlign: "center",
   },
   stateBody: {
-    fontSize: 14,
-    color: COLORS.mutedText,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 14,
-    backgroundColor: COLORS.surface,
-    color: COLORS.text,
-  },
-  multilineInput: {
-    minHeight: 104,
-    textAlignVertical: "top",
+    fontSize: TYPOGRAPHY.label,
+    color: COLORS.textSubtle,
+    lineHeight: 20,
+    textAlign: "center",
   },
   segmentRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: SPACING.sm,
-  },
-  segmentButton: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 999,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.surface,
-  },
-  segmentButtonActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  segmentButtonLabel: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontWeight: "600",
-    textTransform: "capitalize",
-  },
-  segmentButtonLabelActive: {
-    color: COLORS.surface,
-  },
-  primaryButton: {
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: SPACING.md,
-    alignItems: "center",
-    backgroundColor: COLORS.secondary,
-  },
-  primaryButtonLabel: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.surface,
-  },
-  secondaryButton: {
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: SPACING.md,
-    alignItems: "center",
-    backgroundColor: COLORS.primaryMuted,
-  },
-  secondaryButtonLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.primary,
-  },
-  attachmentHeaderRow: {
-    flexDirection: "row",
-    gap: SPACING.md,
-    alignItems: "center",
   },
   attachmentPreviewShell: {
     width: 72,
@@ -1410,42 +1473,15 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     letterSpacing: 1,
   },
-  attachmentBody: {
-    flex: 1,
-    gap: SPACING.xs,
-  },
-  syncCard: {
-    borderRadius: 18,
+  nestedCard: {
     padding: SPACING.md,
-    backgroundColor: COLORS.background,
-    gap: SPACING.sm,
-  },
-  syncTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.text,
   },
   queuedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-    borderRadius: 16,
+    backgroundColor: COLORS.surfaceRaised,
     padding: SPACING.sm,
-    backgroundColor: COLORS.surface,
-  },
-  queuedBody: {
-    flex: 1,
-    gap: SPACING.xs,
-  },
-  inlineButton: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.sm,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
   },
   errorText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.label,
     color: COLORS.danger,
     lineHeight: 20,
   },

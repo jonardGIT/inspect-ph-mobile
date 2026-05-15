@@ -251,3 +251,14 @@ export async function removeQueuedFindingCreate(id: string) {
 
   return nextQueue;
 }
+export async function countAllPendingQueueItems(): Promise<number> {
+  const [attachments, findings] = await Promise.all([
+    readQueue(),
+    readFindingQueue(),
+  ]);
+
+  return (
+    attachments.filter((item) => item.status === "pending").length +
+    findings.filter((item) => item.status === "pending").length
+  );
+}

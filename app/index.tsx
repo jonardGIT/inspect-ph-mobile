@@ -1,18 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { COLORS, SPACING } from "@/constants/theme";
+import {
+  AppButton,
+  AppHero,
+  AppRecordCard,
+  AppStateCard,
+  AppTextField,
+  MetricTile,
+  SectionHeading,
+  StatusBadge,
+  SurfaceCard,
+} from "@/components/mobile-ui";
+import SyncStatusBar from "@/components/sync-status-bar";
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "@/constants/theme";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import {
   ApiRequestError,
@@ -36,8 +46,15 @@ export default function HomeScreen() {
   const [summary, setSummary] = useState<InspectionSummary | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
   const isInspector = session?.user.role === "inspector";
+  const isSupervisorOrAdmin =
+    session?.user.role === "lgu_admin" ||
+    session?.user.role === "office_supervisor" ||
+    session?.user.role === "office_clerk";
   const accessToken = session?.tokens.accessToken;
 
   const loadDashboardData = useCallback(
@@ -71,6 +88,11 @@ export default function HomeScreen() {
 
         setSummary(nextSummary);
         setInspections(nextInspections.data);
+        setCurrentPage(1);
+        setHasMore(
+          nextInspections.meta.total >
+            nextInspections.meta.page * nextInspections.meta.limit,
+        );
       } catch (error) {
         if (error instanceof ApiRequestError && error.status === 401) {
           await signOut();
@@ -89,6 +111,33 @@ export default function HomeScreen() {
     },
     [accessToken, isInspector, signOut],
   );
+
+  const loadMore = useCallback(async () => {
+    if (!accessToken || !hasMore || isLoadingMore) {
+      return;
+    }
+
+    setIsLoadingMore(true);
+    const nextPage = currentPage + 1;
+
+    try {
+      const nextInspections = await listInspections({
+        accessToken,
+        limit: 10,
+        page: nextPage,
+      });
+
+      setInspections((prev) => [...prev, ...nextInspections.data]);
+      setCurrentPage(nextPage);
+      setHasMore(
+        nextInspections.meta.total > nextPage * nextInspections.meta.limit,
+      );
+    } catch {
+      // non-fatal — user can retry by tapping the button again
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [accessToken, currentPage, hasMore, isLoadingMore]);
 
   useEffect(() => {
     void loadDashboardData();
@@ -110,10 +159,12 @@ export default function HomeScreen() {
   if (!isHydrated) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.centeredState}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.stateTitle}>Restoring session</Text>
-          <Text style={styles.stateBody}>Checking secure device storage.</Text>
+        <View style={styles.contentShell}>
+          <AppStateCard
+            description="Checking secure device storage."
+            loading
+            title="Restoring session"
+          />
         </View>
       </SafeAreaView>
     );
@@ -123,59 +174,67 @@ export default function HomeScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.authScrollContent}>
-          <View style={styles.heroCard}>
-            <Text style={styles.kicker}>InspectPH mobile</Text>
-            <Text style={styles.title}>Secure sign in</Text>
-            <Text style={styles.subtitle}>
-              Sign in to review your scoped inspection workload and open the
-              mobile experience allowed for your role.
-            </Text>
-          </View>
+          <AppHero
+            eyebrow="InspectPH mobile"
+            title="Fieldwork, public access, one mobile shell"
+            description="Sign in to review your scoped inspection workload, or open citizen services without an account."
+            trailing={<StatusBadge label="Design restored" tone="warning" />}
+          />
 
-          <View style={styles.formCard}>
-            <Text style={styles.sectionTitle}>Session</Text>
-            <Text style={styles.fieldLabel}>Email</Text>
-            <TextInput
+          <SurfaceCard>
+            <SectionHeading
+              title="Secure sign in"
+              description="Use your assigned inspector account to open scoped schedules, maps, and inspection detail workspaces."
+            />
+            <AppTextField
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="email-address"
+              label="Email"
               placeholder="inspector@example.com"
-              placeholderTextColor={COLORS.mutedText}
-              style={styles.input}
               value={email}
               onChangeText={setEmail}
             />
-            <Text style={styles.fieldLabel}>Password</Text>
-            <TextInput
+            <AppTextField
               autoCapitalize="none"
               autoCorrect={false}
+              label="Password"
               placeholder="Enter your password"
-              placeholderTextColor={COLORS.mutedText}
               secureTextEntry
-              style={styles.input}
               value={password}
               onChangeText={setPassword}
             />
             {authError ? (
               <Text style={styles.errorText}>{authError}</Text>
             ) : null}
-            <Pressable
-              accessibilityRole="button"
+            <AppButton
               disabled={isSigningIn || !email.trim() || !password.trim()}
-              style={[
-                styles.primaryButton,
-                (isSigningIn || !email.trim() || !password.trim()) &&
-                  styles.primaryButtonDisabled,
-              ]}
+              fullWidth
+              label={isSigningIn ? "Signing in..." : "Sign in"}
               onPress={() => {
                 void handleSignIn();
               }}
-            >
-              <Text style={styles.primaryButtonLabel}>
-                {isSigningIn ? "Signing in..." : "Sign in"}
-              </Text>
-            </Pressable>
-          </View>
+            />
+            <AppButton
+              fullWidth
+              label="Open public services"
+              tone="secondary"
+              onPress={() => {
+                router.push("/public-services");
+              }}
+            />
+          </SurfaceCard>
+
+          <SurfaceCard tone="muted">
+            <SectionHeading
+              title="What mobile is for"
+              description="Designed for field inspectors first, while still keeping public reporting accessible from the same app entry point."
+            />
+            <View style={styles.metricGrid}>
+              <MetricTile label="Inspector tools" value="3" tone="primary" />
+              <MetricTile label="Public flows" value="1" tone="accent" />
+            </View>
+          </SurfaceCard>
         </ScrollView>
       </SafeAreaView>
     );
@@ -196,124 +255,117 @@ export default function HomeScreen() {
           />
         }
       >
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.kicker}>
-              {isInspector ? "Assigned queue" : "Scoped mobile access"}
-            </Text>
-            <Text style={styles.title}>{session.user.name}</Text>
-            <Text style={styles.subtitle}>
-              {session.user.roleProfile.label} · {session.user.officeIds.length}{" "}
-              office{session.user.officeIds.length === 1 ? "" : "s"}
-            </Text>
-            {session.user.lguId ? (
-              <Text style={styles.subtitle}>
-                LGU scope: {session.user.lguId}
-              </Text>
-            ) : null}
+        <AppHero
+          eyebrow={isInspector ? "Assigned queue" : "Mobile monitoring"}
+          title={session.user.name}
+          description={`${session.user.roleProfile.label} · ${session.user.officeIds.length} office${session.user.officeIds.length === 1 ? "" : "s"}${session.user.lguId ? ` · LGU ${session.user.lguId}` : ""}`}
+          trailing={
+            <AppButton
+              label="Sign out"
+              tone="secondary"
+              onPress={() => {
+                void signOut();
+              }}
+            />
+          }
+        />
+
+        <SyncStatusBar />
+
+        <SurfaceCard tone="muted">
+          <SectionHeading
+            title="Workload summary"
+            description="A quick read on your current scoped inspection queue."
+          />
+          <View style={styles.metricGrid}>
+            <MetricTile
+              label="Scheduled"
+              value={summary?.scheduled ?? 0}
+              tone="primary"
+            />
+            <MetricTile
+              label="In progress"
+              value={summary?.inProgress ?? 0}
+              tone="secondary"
+            />
+            <MetricTile
+              label="Completed"
+              value={summary?.completed ?? 0}
+              tone="default"
+            />
+            <MetricTile
+              label="Overdue"
+              value={summary?.overdue ?? 0}
+              tone="accent"
+            />
           </View>
-          <Pressable
-            accessibilityRole="button"
-            style={styles.secondaryButton}
-            onPress={() => {
-              void signOut();
-            }}
-          >
-            <Text style={styles.secondaryButtonLabel}>Sign out</Text>
-          </Pressable>
-        </View>
+        </SurfaceCard>
 
-        <View style={styles.summaryGrid}>
-          <SummaryCard label="Scheduled" value={summary?.scheduled ?? 0} />
-          <SummaryCard label="In Progress" value={summary?.inProgress ?? 0} />
-          <SummaryCard label="Completed" value={summary?.completed ?? 0} />
-          <SummaryCard label="Overdue" value={summary?.overdue ?? 0} />
-        </View>
-
-        {isInspector ? (
-          <View style={styles.quickActionsCard}>
-            <Text style={styles.sectionTitle}>Field views</Text>
-            <Text style={styles.sectionBody}>
-              Open the scoped inspector schedule or map without leaving mobile.
-            </Text>
+        {isInspector || isSupervisorOrAdmin ? (
+          <SurfaceCard>
+            <SectionHeading
+              title="Field views"
+              description="Open the scoped inspection schedule or map for your jurisdiction."
+            />
             <View style={styles.quickActionRow}>
-              <Pressable
-                accessibilityRole="button"
-                style={styles.quickActionButton}
+              <QuickAction
+                body="Review upcoming visits grouped by day."
                 onPress={() => {
                   router.push("/inspections/schedule");
                 }}
-              >
-                <Text style={styles.quickActionTitle}>Schedule</Text>
-                <Text style={styles.quickActionBody}>
-                  Review upcoming visits grouped by day.
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                style={styles.quickActionButton}
+                title="Schedule"
+              />
+              <QuickAction
+                body="See only inspection pins inside your API scope."
                 onPress={() => {
                   router.push("/inspections/map");
                 }}
-              >
-                <Text style={styles.quickActionTitle}>Map</Text>
-                <Text style={styles.quickActionBody}>
-                  See only inspection pins inside your API scope.
-                </Text>
-              </Pressable>
+                title="Map"
+              />
             </View>
-          </View>
+          </SurfaceCard>
         ) : null}
 
         {isInspector ? (
-          <View style={styles.listCard}>
-            <Text style={styles.sectionTitle}>Assigned inspections</Text>
-            <Text style={styles.sectionBody}>
-              Your list is scoped by the API to the inspections you are allowed
-              to access.
-            </Text>
-
+          <SurfaceCard>
+            <SectionHeading
+              title="Assigned inspections"
+              description="Your list is scoped by the API to the inspections you are allowed to access."
+            />
             {isLoadingData ? (
-              <View style={styles.inlineState}>
-                <ActivityIndicator color={COLORS.primary} />
-                <Text style={styles.stateBody}>
-                  Loading your inspection queue.
-                </Text>
-              </View>
+              <AppStateCard
+                description="Loading your inspection queue."
+                loading
+                title="Refreshing workload"
+              />
             ) : null}
-
             {dataError ? (
               <Text style={styles.errorText}>{dataError}</Text>
             ) : null}
-
             {!isLoadingData && !dataError && inspections.length === 0 ? (
-              <View style={styles.inlineState}>
-                <Text style={styles.stateTitle}>No assigned inspections</Text>
-                <Text style={styles.stateBody}>
-                  New work will appear here after an office supervisor or admin
-                  assigns it.
-                </Text>
-              </View>
+              <AppStateCard
+                description="New work will appear here after an office supervisor or admin assigns it."
+                title="No assigned inspections"
+              />
             ) : null}
 
             {inspections.map((inspection) => (
-              <Pressable
+              <AppRecordCard
                 key={inspection.id}
-                accessibilityRole="button"
-                style={styles.inspectionCard}
                 onPress={() => {
                   router.push({
                     pathname: "/inspections/[inspectionId]",
                     params: { inspectionId: inspection.id },
                   });
                 }}
+                title={inspection.business.businessName}
+                trailing={
+                  <StatusBadge
+                    label={inspection.status.replace("_", " ")}
+                    tone={getStatusTone(inspection.status)}
+                  />
+                }
               >
-                <View style={styles.inspectionCardHeader}>
-                  <Text style={styles.inspectionTitle}>
-                    {inspection.business.businessName}
-                  </Text>
-                  <StatusBadge status={inspection.status} />
-                </View>
                 <Text style={styles.inspectionMeta}>
                   Permit {inspection.permit.permitNumber}
                 </Text>
@@ -326,50 +378,92 @@ export default function HomeScreen() {
                 <Text style={styles.inspectionMeta} numberOfLines={2}>
                   {inspection.notes?.trim() || "No field notes yet."}
                 </Text>
-              </Pressable>
+              </AppRecordCard>
             ))}
-          </View>
+            {hasMore ? (
+              <AppButton
+                disabled={isLoadingMore}
+                fullWidth
+                label={isLoadingMore ? "Loading..." : "Load more"}
+                tone="secondary"
+                onPress={() => {
+                  void loadMore();
+                }}
+              />
+            ) : null}
+          </SurfaceCard>
         ) : (
-          <View style={styles.listCard}>
-            <Text style={styles.sectionTitle}>Mobile scope</Text>
-            <Text style={styles.sectionBody}>
-              This account can review scoped inspection totals on mobile, but
-              field execution and detail capture stay limited to inspector
-              accounts.
-            </Text>
+          <SurfaceCard>
+            <SectionHeading
+              title={
+                isSupervisorOrAdmin ? "Supervision overview" : "Mobile scope"
+              }
+              description={
+                isSupervisorOrAdmin
+                  ? "Use the field views above to monitor scheduled and in-progress inspections across your jurisdiction. Assignment changes and entity management require the dashboard."
+                  : "This account can review scoped inspection totals on mobile, but field execution and detail capture stay limited to inspector accounts."
+              }
+            />
             {dataError ? (
               <Text style={styles.errorText}>{dataError}</Text>
             ) : null}
-            {!dataError ? (
-              <View style={styles.inlineState}>
-                <Text style={styles.stateTitle}>Read-only role</Text>
-                <Text style={styles.stateBody}>
-                  Use the dashboard for administration and assignment changes.
-                </Text>
-              </View>
+            {!dataError && !isSupervisorOrAdmin ? (
+              <AppStateCard
+                description="Use the dashboard for administration and assignment changes."
+                title="Read-only role"
+              />
             ) : null}
-          </View>
+            {!dataError && isSupervisorOrAdmin ? (
+              <AppButton
+                fullWidth
+                label="Open public services"
+                tone="secondary"
+                onPress={() => {
+                  router.push("/public-services");
+                }}
+              />
+            ) : null}
+          </SurfaceCard>
         )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: number }) {
+function QuickAction(input: {
+  body: string;
+  onPress: () => void;
+  title: string;
+}) {
   return (
-    <View style={styles.summaryCard}>
-      <Text style={styles.summaryValue}>{value}</Text>
-      <Text style={styles.summaryLabel}>{label}</Text>
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      style={({ pressed }) => [
+        styles.quickActionButton,
+        pressed ? styles.cardPressed : null,
+      ]}
+      onPress={input.onPress}
+    >
+      <Text style={styles.quickActionTitle}>{input.title}</Text>
+      <Text style={styles.quickActionBody}>{input.body}</Text>
+    </Pressable>
   );
 }
 
-function StatusBadge({ status }: { status: InspectionRecord["status"] }) {
-  return (
-    <View style={styles.statusBadge}>
-      <Text style={styles.statusBadgeLabel}>{status.replace("_", " ")}</Text>
-    </View>
-  );
+function getStatusTone(status: InspectionRecord["status"]) {
+  if (status === "overdue") {
+    return "danger" as const;
+  }
+
+  if (status === "completed") {
+    return "success" as const;
+  }
+
+  if (status === "in_progress") {
+    return "warning" as const;
+  }
+
+  return "info" as const;
 }
 
 function formatDateTime(value: string) {
@@ -384,227 +478,63 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  contentShell: {
+    flex: 1,
+    justifyContent: "center",
+    padding: SPACING.lg,
+  },
   authScrollContent: {
     flexGrow: 1,
     justifyContent: "center",
     padding: SPACING.lg,
     gap: SPACING.lg,
+    paddingBottom: SPACING.xxl,
   },
   dashboardContent: {
     padding: SPACING.lg,
     gap: SPACING.lg,
+    paddingBottom: SPACING.xxl,
   },
-  centeredState: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.sm,
-    padding: SPACING.lg,
-  },
-  heroCard: {
-    borderRadius: 24,
-    padding: SPACING.lg,
-    backgroundColor: COLORS.primary,
-    gap: SPACING.sm,
-  },
-  formCard: {
-    borderRadius: 24,
-    padding: SPACING.lg,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.sm,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: SPACING.md,
-  },
-  kicker: {
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: COLORS.primaryMuted,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: COLORS.surface,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: COLORS.primaryMuted,
-    textAlign: "left",
-    lineHeight: 22,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  sectionBody: {
-    fontSize: 14,
-    color: COLORS.mutedText,
-    lineHeight: 20,
-  },
-  fieldLabel: {
-    marginTop: SPACING.sm,
-    fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.text,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 14,
-    backgroundColor: COLORS.background,
-    color: COLORS.text,
-  },
-  primaryButton: {
-    marginTop: SPACING.md,
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: "center",
-    backgroundColor: COLORS.secondary,
-  },
-  primaryButtonDisabled: {
-    opacity: 0.55,
-  },
-  primaryButtonLabel: {
-    color: COLORS.surface,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  secondaryButton: {
-    borderRadius: 999,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
-    backgroundColor: COLORS.surface,
-  },
-  secondaryButtonLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.secondary,
-  },
-  summaryGrid: {
+  metricGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: SPACING.md,
   },
-  quickActionsCard: {
-    borderRadius: 24,
-    padding: SPACING.lg,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.md,
-  },
   quickActionRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: SPACING.md,
   },
   quickActionButton: {
     flex: 1,
-    borderRadius: 18,
+    minWidth: 150,
+    borderRadius: RADIUS.md,
     padding: SPACING.md,
-    backgroundColor: COLORS.primaryMuted,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderStrong,
     gap: SPACING.xs,
+  },
+  cardPressed: {
+    opacity: 0.88,
   },
   quickActionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
     color: COLORS.text,
+    fontSize: TYPOGRAPHY.body,
+    fontWeight: "800",
   },
   quickActionBody: {
-    fontSize: 13,
-    color: COLORS.mutedText,
-    lineHeight: 18,
-  },
-  summaryCard: {
-    minWidth: "47%",
-    flexGrow: 1,
-    borderRadius: 20,
-    padding: SPACING.md,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.xs,
-  },
-  summaryValue: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: COLORS.text,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: COLORS.mutedText,
-  },
-  listCard: {
-    borderRadius: 24,
-    padding: SPACING.lg,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.md,
-  },
-  inspectionCard: {
-    borderRadius: 20,
-    padding: SPACING.md,
-    backgroundColor: COLORS.background,
-    gap: SPACING.xs,
-  },
-  inspectionCardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: SPACING.md,
-  },
-  inspectionTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  inspectionMeta: {
-    fontSize: 14,
-    color: COLORS.mutedText,
+    color: COLORS.textSubtle,
+    fontSize: TYPOGRAPHY.label,
     lineHeight: 20,
   },
-  statusBadge: {
-    borderRadius: 999,
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: SPACING.xs + 2,
-    backgroundColor: COLORS.primaryMuted,
-  },
-  statusBadgeLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.primary,
-    textTransform: "capitalize",
-  },
-  inlineState: {
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.sm,
-    paddingVertical: SPACING.xl,
-  },
-  stateTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  stateBody: {
-    fontSize: 14,
-    color: COLORS.mutedText,
-    textAlign: "center",
+  inspectionMeta: {
+    fontSize: TYPOGRAPHY.label,
+    color: COLORS.textSubtle,
     lineHeight: 20,
   },
   errorText: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.label,
     color: COLORS.danger,
     lineHeight: 20,
   },
