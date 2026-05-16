@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -12,20 +12,26 @@ import {
   SurfaceCard,
 } from "@/components/mobile-ui";
 import { COLORS, SPACING } from "@/constants/theme";
+import { useAuthSession } from "@/hooks/use-auth-session";
 import {
   createPublicIssueReport,
   getPublicIssueReportByNumber,
   getPublicPermitByNumber,
   getPublicPaymentByReferenceNumber,
+  listMyCaps,
 } from "@/lib/api";
 
 import type {
+  CorrectiveActionPlanRecord,
   IssueReportRecord,
   PaymentRecord,
   PublicPermitLookupRecord,
 } from "../../shared/types/api";
 
-const CATEGORY_OPTIONS: { label: string; value: IssueReportRecord["category"] }[] = [
+const CATEGORY_OPTIONS: {
+  label: string;
+  value: IssueReportRecord["category"];
+}[] = [
   { label: "Fire hazard", value: "fire_hazard" },
   { label: "Sanitation", value: "sanitation" },
   { label: "Structural", value: "structural" },
@@ -55,6 +61,33 @@ function formatAmount(amountInMinor: number, currency: string) {
 }
 
 export default function PublicServicesScreen() {
+  const { session } = useAuthSession();
+  const isBusinessOwner = session?.user.role === "business_owner";
+  const accessToken = session?.tokens.accessToken;
+
+  // CAP list state (business_owner only)
+  const [caps, setCaps] = useState<CorrectiveActionPlanRecord[]>([]);
+  const [capsLoading, setCapsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isBusinessOwner || !accessToken) return;
+    let cancelled = false;
+    setCapsLoading(true);
+    listMyCaps({ accessToken })
+      .then((res) => {
+        if (!cancelled) setCaps(res.data);
+      })
+      .catch(() => {
+        /* ignore */
+      })
+      .finally(() => {
+        if (!cancelled) setCapsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isBusinessOwner, accessToken]);
+
   // Issue report state
   const [category, setCategory] =
     useState<IssueReportRecord["category"]>("public_safety");
@@ -462,6 +495,45 @@ export default function PublicServicesScreen() {
             </AppRecordCard>
           ) : null}
         </SurfaceCard>
+
+        {isBusinessOwner && caps.length > 0 ? (
+          <SurfaceCard>
+            <SectionHeading
+              title="Corrective Action Plans"
+              description="Open compliance items assigned to your business."
+            />
+            {capsLoading ? (
+              <Text style={{ color: COLORS.textSubtle }}>Loading…</Text>
+            ) : null}
+            {caps.map((cap) => (
+              <AppRecordCard
+                key={cap.id}
+                title={cap.finding?.title ?? `CAP ${cap.id.slice(0, 8)}`}
+                trailing={
+                  <StatusBadge
+                    label={cap.status.toUpperCase()}
+                    tone={
+                      cap.status === "resolved"
+                        ? "success"
+                        : cap.status === "escalated"
+                          ? "danger"
+                          : "warning"
+                    }
+                  />
+                }
+              >
+                {cap.deadlineAt ? (
+                  <Text style={styles.lookupMeta}>
+                    Deadline: {formatDateOnly(cap.deadlineAt)}
+                  </Text>
+                ) : null}
+                {cap.responseNote ? (
+                  <Text style={styles.lookupMeta}>{cap.responseNote}</Text>
+                ) : null}
+              </AppRecordCard>
+            ))}
+          </SurfaceCard>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

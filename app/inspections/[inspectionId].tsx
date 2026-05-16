@@ -1294,6 +1294,7 @@ function createFallbackTemplate(
     sortOrder: 0,
     title: result.template.title,
     updatedAt: result.updatedAt,
+    version: 1,
   };
 }
 

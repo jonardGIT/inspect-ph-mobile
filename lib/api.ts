@@ -8,6 +8,7 @@ import type {
   AttachmentUploadIntent,
   AuthTokens,
   ChecklistTemplateRecord,
+  CorrectiveActionPlanRecord,
   CreatePublicIssueReportInput,
   FireSafetyCertificateRecord,
   FindingRecord,
@@ -607,6 +608,33 @@ export async function registerPushToken(input: {
       method: "POST",
       body: JSON.stringify({ token: input.token }),
     },
+    input.accessToken,
+  );
+}
+
+export async function requestPermitRenewal(input: {
+  accessToken: string;
+  businessId: string;
+}): Promise<{ permitNumber: string }> {
+  const response = await request<ApiResponse<{ permitNumber: string }>>(
+    "/permits/renewal-application",
+    {
+      method: "POST",
+      body: JSON.stringify({ businessId: input.businessId }),
+    },
+    input.accessToken,
+  );
+  return response.data;
+}
+
+export async function listMyCaps(input: {
+  accessToken: string;
+  page?: number;
+  limit?: number;
+}): Promise<ApiListResponse<CorrectiveActionPlanRecord>> {
+  return request<ApiListResponse<CorrectiveActionPlanRecord>>(
+    `/caps/mine?page=${input.page ?? 1}&limit=${input.limit ?? 10}`,
+    {},
     input.accessToken,
   );
 }

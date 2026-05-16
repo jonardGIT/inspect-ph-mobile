@@ -28,6 +28,7 @@ import {
   ApiRequestError,
   getInspectionSummary,
   listInspections,
+  requestPermitRenewal,
 } from "@/lib/api";
 
 import type {
@@ -50,6 +51,10 @@ export default function HomeScreen() {
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [renewalLoading, setRenewalLoading] = useState(false);
+  const [renewalError, setRenewalError] = useState<string | null>(null);
+  const [renewalSuccess, setRenewalSuccess] = useState<string | null>(null);
+  const [renewalBusinessId, setRenewalBusinessId] = useState("");
   const isInspector = session?.user.role === "inspector";
   const isOfficeClerk = session?.user.role === "office_clerk";
   const isSupervisorOrAdmin =
@@ -111,7 +116,14 @@ export default function HomeScreen() {
         setIsRefreshing(false);
       }
     },
-    [accessToken, isBusinessOwner, isCitizen, isInspector, isOfficeClerk, signOut],
+    [
+      accessToken,
+      isBusinessOwner,
+      isCitizen,
+      isInspector,
+      isOfficeClerk,
+      signOut,
+    ],
   );
 
   const loadMore = useCallback(async () => {
@@ -279,34 +291,34 @@ export default function HomeScreen() {
         <SyncStatusBar />
 
         {isInspector || isSupervisorOrAdmin ? (
-        <SurfaceCard tone="muted">
-          <SectionHeading
-            title="Workload summary"
-            description="A quick read on your current scoped inspection queue."
-          />
-          <View style={styles.metricGrid}>
-            <MetricTile
-              label="Scheduled"
-              value={summary?.scheduled ?? 0}
-              tone="primary"
+          <SurfaceCard tone="muted">
+            <SectionHeading
+              title="Workload summary"
+              description="A quick read on your current scoped inspection queue."
             />
-            <MetricTile
-              label="In progress"
-              value={summary?.inProgress ?? 0}
-              tone="secondary"
-            />
-            <MetricTile
-              label="Completed"
-              value={summary?.completed ?? 0}
-              tone="default"
-            />
-            <MetricTile
-              label="Overdue"
-              value={summary?.overdue ?? 0}
-              tone="accent"
-            />
-          </View>
-        </SurfaceCard>
+            <View style={styles.metricGrid}>
+              <MetricTile
+                label="Scheduled"
+                value={summary?.scheduled ?? 0}
+                tone="primary"
+              />
+              <MetricTile
+                label="In progress"
+                value={summary?.inProgress ?? 0}
+                tone="secondary"
+              />
+              <MetricTile
+                label="Completed"
+                value={summary?.completed ?? 0}
+                tone="default"
+              />
+              <MetricTile
+                label="Overdue"
+                value={summary?.overdue ?? 0}
+                tone="accent"
+              />
+            </View>
+          </SurfaceCard>
         ) : null}
 
         {isInspector || isSupervisorOrAdmin ? (
@@ -362,6 +374,57 @@ export default function HomeScreen() {
               tone="secondary"
               onPress={() => {
                 router.push("/public-services");
+              }}
+            />
+          </SurfaceCard>
+        ) : null}
+
+        {isBusinessOwner ? (
+          <SurfaceCard>
+            <SectionHeading
+              title="Apply for permit renewal"
+              description="Submit a renewal application for your business permit before expiry."
+            />
+            <AppTextField
+              label="Business ID"
+              value={renewalBusinessId}
+              onChangeText={setRenewalBusinessId}
+              placeholder="Enter your business ID"
+            />
+            {renewalError ? (
+              <Text style={styles.errorText}>{renewalError}</Text>
+            ) : null}
+            {renewalSuccess ? (
+              <Text style={{ color: COLORS.success, marginBottom: SPACING.sm }}>
+                {renewalSuccess}
+              </Text>
+            ) : null}
+            <AppButton
+              fullWidth
+              label={renewalLoading ? "Submitting…" : "Apply for Renewal"}
+              onPress={async () => {
+                if (!accessToken || !renewalBusinessId.trim()) return;
+                setRenewalLoading(true);
+                setRenewalError(null);
+                setRenewalSuccess(null);
+                try {
+                  const result = await requestPermitRenewal({
+                    accessToken,
+                    businessId: renewalBusinessId.trim(),
+                  });
+                  setRenewalSuccess(
+                    `Renewal submitted — permit ${result.permitNumber}`,
+                  );
+                  setRenewalBusinessId("");
+                } catch (err) {
+                  setRenewalError(
+                    err instanceof ApiRequestError
+                      ? err.message
+                      : "Failed to submit renewal.",
+                  );
+                } finally {
+                  setRenewalLoading(false);
+                }
               }}
             />
           </SurfaceCard>
