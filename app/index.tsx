@@ -51,17 +51,17 @@ export default function HomeScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
   const isInspector = session?.user.role === "inspector";
+  const isOfficeClerk = session?.user.role === "office_clerk";
   const isSupervisorOrAdmin =
     session?.user.role === "lgu_admin" ||
-    session?.user.role === "office_supervisor" ||
-    session?.user.role === "office_clerk";
+    session?.user.role === "office_supervisor";
   const isBusinessOwner = session?.user.role === "business_owner";
   const isCitizen = session?.user.role === "citizen";
   const accessToken = session?.tokens.accessToken;
 
   const loadDashboardData = useCallback(
     async (options?: { refreshing?: boolean }) => {
-      if (!accessToken || isBusinessOwner || isCitizen) {
+      if (!accessToken || isBusinessOwner || isCitizen || isOfficeClerk) {
         return;
       }
 
@@ -111,7 +111,7 @@ export default function HomeScreen() {
         setIsRefreshing(false);
       }
     },
-    [accessToken, isBusinessOwner, isCitizen, isInspector, signOut],
+    [accessToken, isBusinessOwner, isCitizen, isInspector, isOfficeClerk, signOut],
   );
 
   const loadMore = useCallback(async () => {
@@ -458,6 +458,37 @@ export default function HomeScreen() {
             {dataError ? (
               <Text style={styles.errorText}>{dataError}</Text>
             ) : null}
+            <AppButton
+              fullWidth
+              label="Open public services"
+              tone="secondary"
+              onPress={() => {
+                router.push("/public-services");
+              }}
+            />
+          </SurfaceCard>
+        ) : isOfficeClerk ? (
+          <SurfaceCard>
+            <SectionHeading
+              title="Intake actions"
+              description="Quick access to registration and scheduling tools for front-desk intake work."
+            />
+            <View style={styles.quickActionRow}>
+              <QuickAction
+                body="Review the inspection schedule for your office."
+                onPress={() => {
+                  router.push("/inspections/schedule");
+                }}
+                title="Schedule"
+              />
+              <QuickAction
+                body="Look up an inspection on the map."
+                onPress={() => {
+                  router.push("/inspections/map");
+                }}
+                title="Map"
+              />
+            </View>
             <AppButton
               fullWidth
               label="Open public services"

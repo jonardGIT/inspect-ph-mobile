@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   RefreshControl,
   ScrollView,
@@ -92,7 +92,7 @@ export default function InspectionScheduleScreen() {
     [inspections],
   );
 
-  async function loadSchedule(options?: { refreshing?: boolean }) {
+  const loadSchedule = useCallback(async (options?: { refreshing?: boolean }) => {
     if (!accessToken || !isInspector) {
       setInspections([]);
       setIsLoading(false);
@@ -133,7 +133,7 @@ export default function InspectionScheduleScreen() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }
+  }, [accessToken, isInspector, router, selectedOfficeId, signOut]);
 
   useEffect(() => {
     if (!accessToken) {
