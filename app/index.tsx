@@ -21,6 +21,7 @@ import {
   StatusBadge,
   SurfaceCard,
 } from "@/components/mobile-ui";
+import FieldModeToggle from "@/components/field-mode-toggle";
 import SyncStatusBar from "@/components/sync-status-bar";
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "@/constants/theme";
 import { useAuthSession } from "@/hooks/use-auth-session";
@@ -289,6 +290,8 @@ export default function HomeScreen() {
         />
 
         <SyncStatusBar />
+
+        <FieldModeToggle />
 
         {isInspector || isSupervisorOrAdmin ? (
           <SurfaceCard tone="muted">

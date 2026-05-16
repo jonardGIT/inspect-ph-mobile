@@ -6,6 +6,7 @@ import * as Sentry from "@sentry/react-native";
 
 import { COLORS } from "@/constants/theme";
 import { AuthSessionProvider } from "@/hooks/use-auth-session";
+import { FieldModeProvider } from "@/hooks/use-field-mode";
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -56,52 +57,54 @@ function NotificationTapHandler() {
 function RootLayout() {
   return (
     <AuthSessionProvider>
-      <NotificationTapHandler />
-      <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          headerShadowVisible: false,
-          headerStyle: {
-            backgroundColor: COLORS.surfaceRaised,
-          },
-          headerTintColor: COLORS.text,
-          headerTitleStyle: {
-            color: COLORS.text,
-            fontWeight: "700",
-          },
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen
-          name="public-services"
-          options={{
-            headerShown: true,
-            title: "Public services",
+      <FieldModeProvider>
+        <NotificationTapHandler />
+        <StatusBar style="dark" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            headerShadowVisible: false,
+            headerStyle: {
+              backgroundColor: COLORS.surfaceRaised,
+            },
+            headerTintColor: COLORS.text,
+            headerTitleStyle: {
+              color: COLORS.text,
+              fontWeight: "700",
+            },
           }}
-        />
-        <Stack.Screen
-          name="inspections/schedule"
-          options={{
-            headerShown: true,
-            title: "Schedule",
-          }}
-        />
-        <Stack.Screen
-          name="inspections/map"
-          options={{
-            headerShown: true,
-            title: "Inspection map",
-          }}
-        />
-        <Stack.Screen
-          name="inspections/[inspectionId]"
-          options={{
-            headerShown: true,
-            title: "Inspection Detail",
-          }}
-        />
-      </Stack>
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen
+            name="public-services"
+            options={{
+              headerShown: true,
+              title: "Public services",
+            }}
+          />
+          <Stack.Screen
+            name="inspections/schedule"
+            options={{
+              headerShown: true,
+              title: "Schedule",
+            }}
+          />
+          <Stack.Screen
+            name="inspections/map"
+            options={{
+              headerShown: true,
+              title: "Inspection map",
+            }}
+          />
+          <Stack.Screen
+            name="inspections/[inspectionId]"
+            options={{
+              headerShown: true,
+              title: "Inspection Detail",
+            }}
+          />
+        </Stack>
+      </FieldModeProvider>
     </AuthSessionProvider>
   );
 }
