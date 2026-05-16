@@ -98,6 +98,9 @@ export default function InspectionDetailScreen() {
   const [findingCorrectiveAction, setFindingCorrectiveAction] = useState("");
   const [findingSeverity, setFindingSeverity] =
     useState<FindingSeverity>("medium");
+  const [findingPhotoAsset, setFindingPhotoAsset] =
+    useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [isCapturingFindingPhoto, setIsCapturingFindingPhoto] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [checklistError, setChecklistError] = useState<string | null>(null);
   const [findingError, setFindingError] = useState<string | null>(null);
@@ -123,6 +126,7 @@ export default function InspectionDetailScreen() {
     setFindingDescription("");
     setFindingCorrectiveAction("");
     setFindingSeverity("medium");
+    setFindingPhotoAsset(null);
   }
 
   useEffect(() => {
@@ -378,6 +382,25 @@ export default function InspectionDetailScreen() {
     }
   }
 
+  async function handleCaptureFindingPhoto() {
+    setIsCapturingFindingPhoto(true);
+    setFindingError(null);
+    try {
+      const asset = await pickAttachment("camera");
+      if (asset) {
+        setFindingPhotoAsset(asset);
+      }
+    } catch (photoError) {
+      setFindingError(
+        photoError instanceof Error
+          ? photoError.message
+          : "Unable to capture photo.",
+      );
+    } finally {
+      setIsCapturingFindingPhoto(false);
+    }
+  }
+
   async function handleCreateFinding() {
     if (!accessToken || !inspectionId) {
       return;
@@ -420,6 +443,33 @@ export default function InspectionDetailScreen() {
       });
 
       setFindings((currentFindings) => [finding, ...currentFindings]);
+
+      // Upload evidence photo as an attachment if one was captured
+      if (findingPhotoAsset) {
+        const photoToUpload = findingPhotoAsset;
+        const location = await withLocationCapture().catch(() => ({}));
+        const uploadPayload = {
+          capturedAt: new Date().toISOString(),
+          fileName: resolveAttachmentFileName(photoToUpload, "camera"),
+          inspectionId,
+          mimeType: photoToUpload.mimeType || "image/jpeg",
+          uri: photoToUpload.uri,
+          ...location,
+        };
+        try {
+          const attachment = await uploadInspectionAttachment({
+            accessToken,
+            file: uploadPayload,
+            inspectionId,
+          });
+          setAttachments((current) => [attachment, ...current]);
+        } catch {
+          // Enqueue for retry if upload fails
+          const queued = await enqueueAttachmentUpload(uploadPayload);
+          setQueuedAttachments((current) => [queued, ...current]);
+        }
+      }
+
       resetFindingDraft();
     } catch (createError) {
       const errorMessage =
@@ -1002,6 +1052,22 @@ export default function InspectionDetailScreen() {
               <SectionHeading
                 title="Findings"
                 description="Record field issues with severity and optional corrective action."
+              />
+              {/* Photo-first: capture evidence before filling the form */}
+              <AppButton
+                disabled={isCapturingFindingPhoto || isCreatingFinding}
+                fullWidth
+                label={
+                  isCapturingFindingPhoto
+                    ? "Opening camera..."
+                    : findingPhotoAsset
+                      ? "Evidence photo captured — retake"
+                      : "Capture evidence photo (optional)"
+                }
+                onPress={() => {
+                  void handleCaptureFindingPhoto();
+                }}
+                tone={findingPhotoAsset ? "secondary" : "primary"}
               />
               <AppTextField
                 label="Finding title"
