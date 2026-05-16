@@ -23,6 +23,7 @@ import {
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "@/constants/theme";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { ApiRequestError, listInspectionMapPoints } from "@/lib/api";
+import SyncStatusBar from "@/components/sync-status-bar";
 
 import type { InspectionMapPoint } from "../../../shared/types/api";
 
@@ -231,6 +232,7 @@ export default function InspectionMapScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <SyncStatusBar />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={

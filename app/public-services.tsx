@@ -25,10 +25,7 @@ import type {
   PublicPermitLookupRecord,
 } from "../../shared/types/api";
 
-const CATEGORY_OPTIONS: Array<{
-  label: string;
-  value: IssueReportRecord["category"];
-}> = [
+const CATEGORY_OPTIONS: { label: string; value: IssueReportRecord["category"] }[] = [
   { label: "Fire hazard", value: "fire_hazard" },
   { label: "Sanitation", value: "sanitation" },
   { label: "Structural", value: "structural" },

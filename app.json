@@ -13,17 +13,24 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.inspectph.mobile"
+      "bundleIdentifier": "com.inspectph.mobile",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
     },
     "android": {
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.inspectph.mobile"
+      "package": "com.inspectph.mobile",
+      "usesCleartextTraffic": true
     },
     "web": {
       "output": "static"
     },
     "plugins": [
+      "@sentry/react-native/expo",
       [
         "expo-image-picker",
         {

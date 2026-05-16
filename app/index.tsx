@@ -55,11 +55,13 @@ export default function HomeScreen() {
     session?.user.role === "lgu_admin" ||
     session?.user.role === "office_supervisor" ||
     session?.user.role === "office_clerk";
+  const isBusinessOwner = session?.user.role === "business_owner";
+  const isCitizen = session?.user.role === "citizen";
   const accessToken = session?.tokens.accessToken;
 
   const loadDashboardData = useCallback(
     async (options?: { refreshing?: boolean }) => {
-      if (!accessToken) {
+      if (!accessToken || isBusinessOwner || isCitizen) {
         return;
       }
 
@@ -109,7 +111,7 @@ export default function HomeScreen() {
         setIsRefreshing(false);
       }
     },
-    [accessToken, isInspector, signOut],
+    [accessToken, isBusinessOwner, isCitizen, isInspector, signOut],
   );
 
   const loadMore = useCallback(async () => {
@@ -258,7 +260,11 @@ export default function HomeScreen() {
         <AppHero
           eyebrow={isInspector ? "Assigned queue" : "Mobile monitoring"}
           title={session.user.name}
-          description={`${session.user.roleProfile.label} · ${session.user.officeIds.length} office${session.user.officeIds.length === 1 ? "" : "s"}${session.user.lguId ? ` · LGU ${session.user.lguId}` : ""}`}
+          description={
+            isBusinessOwner || isCitizen
+              ? session.user.roleProfile.label
+              : `${session.user.roleProfile.label} · ${session.user.officeIds.length} office${session.user.officeIds.length === 1 ? "" : "s"}${session.user.lguId ? ` · LGU ${session.user.lguId}` : ""}`
+          }
           trailing={
             <AppButton
               label="Sign out"
@@ -272,6 +278,7 @@ export default function HomeScreen() {
 
         <SyncStatusBar />
 
+        {isInspector || isSupervisorOrAdmin ? (
         <SurfaceCard tone="muted">
           <SectionHeading
             title="Workload summary"
@@ -300,6 +307,7 @@ export default function HomeScreen() {
             />
           </View>
         </SurfaceCard>
+        ) : null}
 
         {isInspector || isSupervisorOrAdmin ? (
           <SurfaceCard>
@@ -323,6 +331,55 @@ export default function HomeScreen() {
                 title="Map"
               />
             </View>
+          </SurfaceCard>
+        ) : null}
+
+        {isBusinessOwner ? (
+          <SurfaceCard>
+            <SectionHeading
+              title="Your establishment"
+              description="Look up your active permits, fire safety certificates, and payments using your permit number."
+            />
+            <View style={styles.quickActionRow}>
+              <QuickAction
+                body="Look up permit status, findings, and validity."
+                onPress={() => {
+                  router.push("/public-services");
+                }}
+                title="Permit lookup"
+              />
+              <QuickAction
+                body="Check fire safety certificate validity."
+                onPress={() => {
+                  router.push("/public-services");
+                }}
+                title="FSIC lookup"
+              />
+            </View>
+            <AppButton
+              fullWidth
+              label="Open public services"
+              tone="secondary"
+              onPress={() => {
+                router.push("/public-services");
+              }}
+            />
+          </SurfaceCard>
+        ) : null}
+
+        {isCitizen ? (
+          <SurfaceCard>
+            <SectionHeading
+              title="Report an issue"
+              description="Submit a fire hazard, sanitation, or public safety concern. No account required to report — submissions are reviewed by the relevant office."
+            />
+            <AppButton
+              fullWidth
+              label="Submit issue report"
+              onPress={() => {
+                router.push("/public-services");
+              }}
+            />
           </SurfaceCard>
         ) : null}
 
@@ -392,39 +449,25 @@ export default function HomeScreen() {
               />
             ) : null}
           </SurfaceCard>
-        ) : (
+        ) : isSupervisorOrAdmin ? (
           <SurfaceCard>
             <SectionHeading
-              title={
-                isSupervisorOrAdmin ? "Supervision overview" : "Mobile scope"
-              }
-              description={
-                isSupervisorOrAdmin
-                  ? "Use the field views above to monitor scheduled and in-progress inspections across your jurisdiction. Assignment changes and entity management require the dashboard."
-                  : "This account can review scoped inspection totals on mobile, but field execution and detail capture stay limited to inspector accounts."
-              }
+              title="Supervision overview"
+              description="Use the field views above to monitor scheduled and in-progress inspections across your jurisdiction. Assignment changes and entity management require the dashboard."
             />
             {dataError ? (
               <Text style={styles.errorText}>{dataError}</Text>
             ) : null}
-            {!dataError && !isSupervisorOrAdmin ? (
-              <AppStateCard
-                description="Use the dashboard for administration and assignment changes."
-                title="Read-only role"
-              />
-            ) : null}
-            {!dataError && isSupervisorOrAdmin ? (
-              <AppButton
-                fullWidth
-                label="Open public services"
-                tone="secondary"
-                onPress={() => {
-                  router.push("/public-services");
-                }}
-              />
-            ) : null}
+            <AppButton
+              fullWidth
+              label="Open public services"
+              tone="secondary"
+              onPress={() => {
+                router.push("/public-services");
+              }}
+            />
           </SurfaceCard>
-        )}
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

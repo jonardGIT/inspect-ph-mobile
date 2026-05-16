@@ -2,9 +2,17 @@ import * as Notifications from "expo-notifications";
 import { router, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef } from "react";
+import * as Sentry from "@sentry/react-native";
 
 import { COLORS } from "@/constants/theme";
 import { AuthSessionProvider } from "@/hooks/use-auth-session";
+
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  environment: process.env.NODE_ENV ?? "development",
+  tracesSampleRate: process.env.NODE_ENV === "production" ? 0.2 : 1.0,
+  enabled: Boolean(process.env.EXPO_PUBLIC_SENTRY_DSN),
+});
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -30,6 +38,10 @@ function NotificationTapHandler() {
 
         if (data.entityType === "inspection" && data.entityId) {
           router.push(`/inspections/${data.entityId}`);
+        } else if (data.entityType === "issue_report") {
+          router.push("/public-services");
+        } else if (data.entityType === "permit") {
+          router.push("/public-services");
         }
       });
 
@@ -41,7 +53,7 @@ function NotificationTapHandler() {
   return null;
 }
 
-export default function RootLayout() {
+function RootLayout() {
   return (
     <AuthSessionProvider>
       <NotificationTapHandler />
@@ -93,3 +105,5 @@ export default function RootLayout() {
     </AuthSessionProvider>
   );
 }
+
+export default Sentry.wrap(RootLayout);

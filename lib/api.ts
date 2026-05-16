@@ -19,6 +19,7 @@ import type {
   ModuleRecord,
   OfficeModuleRecord,
   PaymentRecord,
+  PermitRecord,
   PublicPermitLookupRecord,
   User,
 } from "../../shared/types/api";
@@ -634,6 +635,81 @@ export async function getPublicPaymentByReferenceNumber(input: {
 }): Promise<PaymentRecord> {
   const response = await request<ApiResponse<PaymentRecord>>(
     `/payments/public/${encodeURIComponent(input.referenceNumber)}`,
+  );
+  return response.data;
+}
+
+export async function register(input: {
+  email: string;
+  name: string;
+  password: string;
+  role: "business_owner" | "citizen";
+  businessId?: string;
+}): Promise<AuthSession> {
+  const response = await request<ApiResponse<AuthSession>>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.data;
+}
+
+export async function listOwnPermits(
+  accessToken: string,
+  params?: { page?: number; limit?: number; status?: string },
+): Promise<ApiListResponse<PermitRecord>> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.status) query.set("status", params.status);
+  const qs = query.toString();
+  return request<ApiListResponse<PermitRecord>>(
+    `/permits/mine${qs ? `?${qs}` : ""}`,
+    {},
+    accessToken,
+  );
+}
+
+export async function listOwnCertificates(
+  accessToken: string,
+  params?: { page?: number; limit?: number },
+): Promise<ApiListResponse<FireSafetyCertificateRecord>> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  const qs = query.toString();
+  return request<ApiListResponse<FireSafetyCertificateRecord>>(
+    `/fire-safety-certificates/mine${qs ? `?${qs}` : ""}`,
+    {},
+    accessToken,
+  );
+}
+
+export async function listOwnIssueReports(
+  accessToken: string,
+  params?: { page?: number; limit?: number },
+): Promise<ApiListResponse<IssueReportRecord>> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  const qs = query.toString();
+  return request<ApiListResponse<IssueReportRecord>>(
+    `/issue-reports/mine${qs ? `?${qs}` : ""}`,
+    {},
+    accessToken,
+  );
+}
+
+export async function requestReinspection(
+  accessToken: string,
+  input: { inspectionId: string; reason?: string },
+): Promise<{ inspectionId: string }> {
+  const response = await request<ApiResponse<{ inspectionId: string }>>(
+    `/inspections/${input.inspectionId}/reinspection-request`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason: input.reason }),
+    },
+    accessToken,
   );
   return response.data;
 }
