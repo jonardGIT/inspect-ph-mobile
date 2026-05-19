@@ -1,51 +1,33 @@
-import { Pressable, StyleSheet, Text } from "react-native";
+import { Button } from "@rneui/themed";
 
-import { SPACING, TYPOGRAPHY } from "@/constants/theme";
+import { RADIUS, SPACING, TYPOGRAPHY } from "@/constants/theme";
 import { useFieldMode } from "@/hooks/use-field-mode";
 
 export default function FieldModeToggle() {
   const { fieldMode, toggleFieldMode, colors, minTouchSize } = useFieldMode();
 
   return (
-    <Pressable
+    <Button
+      title={fieldMode ? "\u2600 Field mode ON" : "\u2600 Field mode"}
+      type={fieldMode ? "solid" : "outline"}
       onPress={toggleFieldMode}
       accessibilityRole="button"
       accessibilityLabel={
         fieldMode ? "Disable field mode" : "Enable field mode (high contrast)"
       }
-      style={({ pressed }) => [
-        styles.button,
-        {
-          backgroundColor: fieldMode ? colors.primary : colors.backgroundMuted,
-          borderColor: fieldMode ? colors.primary : colors.border,
-          minHeight: minTouchSize,
-          opacity: pressed ? 0.7 : 1,
-        },
-      ]}
-    >
-      <Text
-        style={[
-          styles.label,
-          { color: fieldMode ? colors.background : colors.textSubtle },
-        ]}
-      >
-        {fieldMode ? "☀ Field mode ON" : "☀ Field mode"}
-      </Text>
-    </Pressable>
+      buttonStyle={{
+        backgroundColor: fieldMode ? colors.primary : "transparent",
+        borderColor: fieldMode ? colors.primary : colors.border,
+        borderRadius: RADIUS.md,
+        minHeight: minTouchSize,
+        paddingHorizontal: SPACING.md,
+        paddingVertical: SPACING.sm,
+      }}
+      titleStyle={{
+        color: fieldMode ? colors.background : colors.textSubtle,
+        fontSize: TYPOGRAPHY.label,
+        fontWeight: "600",
+      }}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  button: {
-    alignItems: "center",
-    borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: "center",
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-  },
-  label: {
-    fontSize: TYPOGRAPHY.label,
-    fontWeight: "600",
-  },
-});

@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet } from "react-native";
+import { ListItem } from "@rneui/themed";
 
 import { COLORS, SPACING, TYPOGRAPHY } from "@/constants/theme";
+import { API_BASE_URL } from "@/lib/api-base-url";
 import { countAllPendingQueueItems } from "@/lib/storage/attachment-upload-queue";
-
-const API_ORIGIN = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
 
 async function probeConnectivity(): Promise<boolean> {
   try {
-    const response = await fetch(`${API_ORIGIN}/health`, {
-      method: "HEAD",
+    const response = await fetch(`${API_BASE_URL}/health`, {
+      method: "GET",
       signal: AbortSignal.timeout(3000),
     });
     return response.ok;
@@ -56,21 +56,31 @@ export default function SyncStatusBar() {
   }
 
   const isOffline = !online;
+  const itemWord = pendingCount === 1 ? "item" : "items";
+  const message = isOffline
+    ? `\uD83D\uDCF5 Saved locally \u2014 ${pendingCount} ${itemWord} waiting to sync (offline)`
+    : `\u2601\uFE0F Saved locally \u2014 syncing ${pendingCount} ${itemWord}\u2026`;
 
   return (
-    <View style={[styles.bar, isOffline && styles.barOffline]}>
-      <Text style={[styles.text, isOffline && styles.textOffline]}>
-        {isOffline
-          ? `\uD83D\uDCF5 Saved locally \u2014 ${pendingCount} ${pendingCount === 1 ? "item" : "items"} waiting to sync (offline)`
-          : `\u2601\uFE0F Saved locally \u2014 syncing ${pendingCount} ${pendingCount === 1 ? "item" : "items"}\u2026`}
-      </Text>
-    </View>
+    <ListItem
+      containerStyle={[
+        styles.bar,
+        isOffline ? styles.barOffline : null,
+      ]}
+    >
+      <ListItem.Content>
+        <ListItem.Title
+          style={[styles.text, isOffline ? styles.textOffline : null]}
+        >
+          {message}
+        </ListItem.Title>
+      </ListItem.Content>
+    </ListItem>
   );
 }
 
 const styles = StyleSheet.create({
   bar: {
-    alignItems: "center",
     backgroundColor: COLORS.accentMuted,
     borderColor: COLORS.accent,
     borderRadius: 8,
@@ -85,10 +95,12 @@ const styles = StyleSheet.create({
   },
   text: {
     color: COLORS.accent,
-    fontSize: TYPOGRAPHY.label,
-    fontWeight: "600",
+    fontSize: TYPOGRAPHY.caption,
+    fontWeight: "500",
+    textAlign: "center",
   },
   textOffline: {
     color: COLORS.danger,
   },
 });
+

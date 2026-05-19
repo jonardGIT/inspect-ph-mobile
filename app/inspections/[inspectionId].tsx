@@ -211,18 +211,23 @@ export default function InspectionDetailScreen() {
         const [
           detail,
           certificateResult,
-          nextChecklistTemplates,
           nextChecklistResults,
           nextFindings,
           nextAttachments,
         ] = await Promise.all([
           getInspectionDetail(token, inspectionId),
           loadCertificate(),
-          listChecklistTemplates(token),
           listInspectionChecklistResults(token, inspectionId),
           listInspectionFindings(token, inspectionId),
           listInspectionAttachments(token, inspectionId),
         ]);
+
+        const moduleCode =
+          detail.moduleCode ?? detail.office.moduleCodes[0];
+        const nextChecklistTemplates = await listChecklistTemplates(
+          token,
+          moduleCode,
+        );
 
         if (isCancelled) {
           return;
@@ -258,10 +263,20 @@ export default function InspectionDetailScreen() {
           );
 
           if (cachedRaw) {
-            const cachedDetail = JSON.parse(cachedRaw) as InspectionRecord;
-            setInspection(cachedDetail);
-            setIsStale(true);
-            setError(null);
+            try {
+              const cachedDetail = JSON.parse(cachedRaw) as InspectionRecord;
+
+              setInspection(cachedDetail);
+              setIsStale(true);
+              setError(null);
+            } catch {
+              const errorMessage =
+                loadError instanceof Error
+                  ? loadError.message
+                  : "Unable to load inspection details.";
+
+              setError(errorMessage);
+            }
           } else {
             const errorMessage =
               loadError instanceof Error
@@ -780,7 +795,7 @@ export default function InspectionDetailScreen() {
   const showFireSafetyCertificateCard =
     Boolean(fireSafetyCertificate) ||
     Boolean(certificateError) ||
-    Boolean(inspection?.office.code.toUpperCase().includes("FIRE"));
+    Boolean(inspection?.office.moduleCodes.includes("FIRE"));
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -1458,8 +1473,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   staleBanner: {
-    backgroundColor: "#fef3c7",
-    borderColor: "#f59e0b",
+    backgroundColor: COLORS.accentMuted,
+    borderColor: COLORS.accent,
     borderWidth: 1,
     borderRadius: 8,
     paddingVertical: SPACING.sm,
@@ -1467,7 +1482,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   staleBannerText: {
-    color: "#92400e",
+    color: COLORS.accent,
     fontSize: TYPOGRAPHY.label,
     textAlign: "center",
   },

@@ -3,10 +3,27 @@ import { router, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef } from "react";
 import * as Sentry from "@sentry/react-native";
+import { ThemeProvider, createTheme } from "@rneui/themed";
 
-import { COLORS } from "@/constants/theme";
+import { COLORS, RADIUS } from "@/constants/theme";
 import { AuthSessionProvider } from "@/hooks/use-auth-session";
 import { FieldModeProvider } from "@/hooks/use-field-mode";
+
+const rneTheme = createTheme({
+  lightColors: {
+    primary: COLORS.primary,
+    secondary: COLORS.secondary,
+    error: COLORS.danger,
+    success: COLORS.success,
+    warning: COLORS.accent,
+    background: COLORS.background,
+    white: COLORS.surfaceRaised,
+    black: COLORS.text,
+  },
+  components: {
+    Button: { radius: RADIUS.md },
+  },
+});
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -39,10 +56,8 @@ function NotificationTapHandler() {
 
         if (data.entityType === "inspection" && data.entityId) {
           router.push(`/inspections/${data.entityId}`);
-        } else if (data.entityType === "issue_report") {
-          router.push("/public-services");
-        } else if (data.entityType === "permit") {
-          router.push("/public-services");
+        } else {
+          router.push("/(tabs)/services");
         }
       });
 
@@ -56,56 +71,64 @@ function NotificationTapHandler() {
 
 function RootLayout() {
   return (
-    <AuthSessionProvider>
-      <FieldModeProvider>
-        <NotificationTapHandler />
-        <StatusBar style="dark" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            headerShadowVisible: false,
-            headerStyle: {
-              backgroundColor: COLORS.surfaceRaised,
-            },
-            headerTintColor: COLORS.text,
-            headerTitleStyle: {
-              color: COLORS.text,
-              fontWeight: "700",
-            },
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen
-            name="public-services"
-            options={{
-              headerShown: true,
-              title: "Public services",
+    <ThemeProvider theme={rneTheme}>
+      <AuthSessionProvider>
+        <FieldModeProvider>
+          <NotificationTapHandler />
+          <StatusBar style="dark" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              headerShadowVisible: false,
+              headerStyle: {
+                backgroundColor: COLORS.surfaceRaised,
+              },
+              headerTintColor: COLORS.text,
+              headerTitleStyle: {
+                color: COLORS.text,
+                fontWeight: "700",
+              },
             }}
-          />
-          <Stack.Screen
-            name="inspections/schedule"
-            options={{
-              headerShown: true,
-              title: "Schedule",
-            }}
-          />
-          <Stack.Screen
-            name="inspections/map"
-            options={{
-              headerShown: true,
-              title: "Inspection map",
-            }}
-          />
-          <Stack.Screen
-            name="inspections/[inspectionId]"
-            options={{
-              headerShown: true,
-              title: "Inspection Detail",
-            }}
-          />
-        </Stack>
-      </FieldModeProvider>
-    </AuthSessionProvider>
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="login" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="register"
+              options={{ headerShown: true, title: "Create account" }}
+            />
+            <Stack.Screen
+              name="public-services"
+              options={{
+                headerShown: true,
+                title: "Public services",
+              }}
+            />
+            <Stack.Screen
+              name="inspections/schedule"
+              options={{
+                headerShown: true,
+                title: "Schedule",
+              }}
+            />
+            <Stack.Screen
+              name="inspections/map"
+              options={{
+                headerShown: true,
+                title: "Inspection map",
+              }}
+            />
+            <Stack.Screen
+              name="inspections/[inspectionId]"
+              options={{
+                headerShown: true,
+                title: "Inspection Detail",
+              }}
+            />
+          </Stack>
+        </FieldModeProvider>
+      </AuthSessionProvider>
+    </ThemeProvider>
   );
 }
 

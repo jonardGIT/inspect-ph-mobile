@@ -1,4 +1,4 @@
-import Constants from "expo-constants";
+import { API_BASE_URL } from "@/lib/api-base-url";
 
 import type {
   ApiError,
@@ -24,49 +24,6 @@ import type {
   PublicPermitLookupRecord,
   User,
 } from "../../shared/types/api";
-
-function normalizeApiBaseUrl(value: string) {
-  return value.trim().replace(/\/$/, "");
-}
-
-function resolveExpoHost() {
-  const candidates = [
-    Constants.expoConfig?.hostUri,
-    Constants.expoGoConfig?.debuggerHost,
-  ];
-
-  for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-
-    const host = candidate.split("/")[0]?.split(":")[0]?.trim();
-
-    if (host) {
-      return host;
-    }
-  }
-
-  return null;
-}
-
-function resolveApiBaseUrl() {
-  const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-
-  if (configuredApiUrl) {
-    return normalizeApiBaseUrl(configuredApiUrl);
-  }
-
-  const expoHost = resolveExpoHost();
-
-  if (expoHost) {
-    return `http://${expoHost}:4000/api/v1`;
-  }
-
-  return "http://localhost:4000/api/v1";
-}
-
-const API_BASE_URL = resolveApiBaseUrl();
 
 export interface AuthSession {
   tokens: AuthTokens;
@@ -125,11 +82,38 @@ async function request<T>(
     });
   } catch {
     throw new Error(
-      `Network request failed. Check that the API is reachable at ${API_BASE_URL}.`,
+      `Network request failed. Could not reach ${requestUrl} — check the API_URL in your .env.local.`,
     );
   }
 
-  const payload = (await response.json()) as T & ApiError;
+  const responseText = await response.text();
+
+  if (!responseText) {
+    if (!response.ok) {
+      throw new ApiRequestError(
+        response.status,
+        response.statusText || "The request could not be completed.",
+      );
+    }
+
+    return undefined as T;
+  }
+
+  let payload: T & ApiError;
+  try {
+    payload = JSON.parse(responseText) as T & ApiError;
+  } catch {
+    if (!response.ok) {
+      throw new ApiRequestError(
+        response.status,
+        response.statusText || "The request could not be completed.",
+      );
+    }
+
+    throw new Error(
+      `Server returned a non-JSON response (HTTP ${response.status}) for ${requestUrl}.`,
+    );
+  }
 
   if (!response.ok) {
     throw new ApiRequestError(

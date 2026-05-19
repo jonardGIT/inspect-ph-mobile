@@ -2,19 +2,18 @@ import { LinearGradient } from "expo-linear-gradient";
 import type { ReactNode } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
-  type PressableProps,
-  type PressableStateCallbackType,
-  type TextInputProps,
+  type KeyboardTypeOptions,
   type ViewStyle,
 } from "react-native";
+import { Button, Card, Chip, Input, ListItem } from "@rneui/themed";
 
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "@/constants/theme";
 
+// ── AppHero ───────────────────────────────────────────────────────────────────
+// Kept custom — uses LinearGradient with no RNEUI equivalent.
 export function AppHero(input: {
   eyebrow: string;
   title: string;
@@ -40,25 +39,29 @@ export function AppHero(input: {
   );
 }
 
+// ── SurfaceCard ───────────────────────────────────────────────────────────────
+// Uses RNEUI Card for the card container pattern.
 export function SurfaceCard(input: {
   children: ReactNode;
   style?: ViewStyle;
   tone?: "default" | "muted" | "accent";
 }) {
   return (
-    <View
-      style={[
+    <Card
+      containerStyle={[
         styles.surfaceCard,
         input.tone === "muted" ? styles.surfaceMuted : null,
         input.tone === "accent" ? styles.surfaceAccent : null,
         input.style,
       ]}
+      wrapperStyle={styles.surfaceCardWrapper}
     >
       {input.children}
-    </View>
+    </Card>
   );
 }
 
+// ── SectionHeading ────────────────────────────────────────────────────────────
 export function SectionHeading(input: {
   title: string;
   description?: string;
@@ -77,6 +80,8 @@ export function SectionHeading(input: {
   );
 }
 
+// ── MetricTile ────────────────────────────────────────────────────────────────
+// Kept custom — no RNEUI equivalent for metric display.
 export function MetricTile(input: {
   label: string;
   value: number | string;
@@ -97,79 +102,104 @@ export function MetricTile(input: {
   );
 }
 
+// ── StatusBadge ───────────────────────────────────────────────────────────────
+// Uses RNEUI Chip (solid, no onPress) for status labels.
+const BADGE_TONE_STYLE: Record<
+  "info" | "success" | "warning" | "danger" | "default",
+  ViewStyle
+> = {
+  default: { backgroundColor: COLORS.backgroundMuted },
+  info: { backgroundColor: COLORS.secondaryMuted },
+  success: { backgroundColor: COLORS.successMuted },
+  warning: { backgroundColor: COLORS.accentMuted },
+  danger: { backgroundColor: COLORS.dangerMuted },
+};
+
 export function StatusBadge(input: {
   label: string;
   tone?: "info" | "success" | "warning" | "danger" | "default";
 }) {
   return (
-    <View
-      style={[
-        styles.badge,
-        input.tone === "info" ? styles.badgeInfo : null,
-        input.tone === "success" ? styles.badgeSuccess : null,
-        input.tone === "warning" ? styles.badgeWarning : null,
-        input.tone === "danger" ? styles.badgeDanger : null,
-      ]}
-    >
-      <Text style={styles.badgeLabel}>{input.label}</Text>
-    </View>
+    <Chip
+      title={input.label}
+      type="solid"
+      buttonStyle={[styles.badge, BADGE_TONE_STYLE[input.tone ?? "default"]]}
+      titleStyle={styles.badgeLabel}
+      containerStyle={styles.badgeContainer}
+    />
   );
 }
 
-export function AppButton(
-  input: PressableProps & {
-    label: string;
-    tone?: "primary" | "secondary" | "ghost";
-    fullWidth?: boolean;
-  },
-) {
+// ── AppButton ─────────────────────────────────────────────────────────────────
+// Uses RNEUI Button. Supports loading, icon, and all ButtonProps in addition to
+// the original PressableProps surface.
+export function AppButton(input: {
+  label: string;
+  tone?: "primary" | "secondary" | "ghost";
+  fullWidth?: boolean;
+  style?: ViewStyle;
+  disabled?: boolean;
+  loading?: boolean;
+  onPress?: () => void;
+  accessibilityLabel?: string;
+}) {
   const {
     label,
     tone = "primary",
     fullWidth,
-    disabled,
     style,
-    ...pressableProps
+    disabled = false,
+    loading = false,
+    onPress,
+    accessibilityLabel,
   } = input;
 
   return (
-    <Pressable
-      accessibilityRole="button"
+    <Button
       disabled={disabled}
-      style={(state: PressableStateCallbackType) => [
+      loading={loading}
+      title={label}
+      accessibilityRole="button"
+      {...(accessibilityLabel !== undefined ? { accessibilityLabel } : {})}
+      type={
+        tone === "primary"
+          ? "solid"
+          : tone === "secondary"
+            ? "outline"
+            : "clear"
+      }
+      buttonStyle={[
         styles.button,
         tone === "primary" ? styles.buttonPrimary : null,
         tone === "secondary" ? styles.buttonSecondary : null,
-        tone === "ghost" ? styles.buttonGhost : null,
-        fullWidth ? styles.buttonFullWidth : null,
-        state.pressed ? styles.buttonPressed : null,
-        disabled ? styles.buttonDisabled : null,
-        typeof style === "function" ? style(state) : style,
       ]}
-      {...pressableProps}
-    >
-      <Text
-        style={[
-          styles.buttonLabel,
-          tone === "secondary" ? styles.buttonLabelSecondary : null,
-          tone === "ghost" ? styles.buttonLabelGhost : null,
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
+      titleStyle={[
+        styles.buttonLabel,
+        tone === "secondary" ? styles.buttonLabelSecondary : null,
+        tone === "ghost" ? styles.buttonLabelGhost : null,
+      ]}
+      containerStyle={[fullWidth ? styles.buttonFullWidth : null, style]}
+      disabledStyle={styles.buttonDisabled}
+      onPress={onPress}
+    />
   );
 }
 
+// ── InfoRow ───────────────────────────────────────────────────────────────────
+// Uses RNEUI ListItem for the horizontal label/value row pattern.
 export function InfoRow(input: { label: string; value: string }) {
   return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{input.label}</Text>
+    <ListItem containerStyle={styles.infoRow} pad={0}>
+      <ListItem.Content>
+        <ListItem.Title style={styles.infoLabel}>{input.label}</ListItem.Title>
+      </ListItem.Content>
       <Text style={styles.infoValue}>{input.value}</Text>
-    </View>
+    </ListItem>
   );
 }
 
+// ── AppRecordCard ─────────────────────────────────────────────────────────────
+// Static → RNEUI Card. Pressable → RNEUI ListItem (built-in onPress + ripple).
 export function AppRecordCard(input: {
   children?: ReactNode;
   onPress?: () => void;
@@ -177,73 +207,102 @@ export function AppRecordCard(input: {
   title?: string;
   trailing?: ReactNode;
 }) {
-  const content = (
-    <>
-      {input.title || input.trailing ? (
-        <View style={styles.recordCardHeader}>
-          {input.title ? (
-            <Text style={styles.recordCardTitle}>{input.title}</Text>
-          ) : (
-            <View />
-          )}
-          {input.trailing}
-        </View>
-      ) : null}
-      {input.children}
-    </>
-  );
+  const header =
+    input.title || input.trailing ? (
+      <View style={styles.recordCardHeader}>
+        {input.title ? (
+          <Text style={styles.recordCardTitle}>{input.title}</Text>
+        ) : (
+          <View />
+        )}
+        {input.trailing}
+      </View>
+    ) : null;
 
   if (input.onPress) {
     return (
-      <Pressable
+      <ListItem
         accessibilityRole="button"
-        style={({ pressed }) => [
-          styles.recordCard,
-          pressed ? styles.recordCardPressed : null,
-          input.style,
-        ]}
+        containerStyle={[styles.recordCard, input.style]}
         onPress={input.onPress}
       >
-        {content}
-      </Pressable>
+        {header}
+        {input.children ? (
+          <ListItem.Content style={styles.recordCardContent}>
+            {input.children}
+          </ListItem.Content>
+        ) : null}
+      </ListItem>
     );
   }
 
-  return <View style={[styles.recordCard, input.style]}>{content}</View>;
+  return (
+    <Card
+      containerStyle={[styles.recordCard, input.style]}
+      wrapperStyle={styles.recordCardWrapper}
+    >
+      {header}
+      {input.children}
+    </Card>
+  );
 }
 
-export function AppTextField(
-  input: TextInputProps & {
-    label?: string;
-    helperText?: string;
-    errorText?: string;
-    containerStyle?: ViewStyle;
-  },
-) {
+// ── AppTextField ──────────────────────────────────────────────────────────────
+// Uses RNEUI Input for label + input + error layout. helperText is rendered
+// manually below (RNEUI Input has no helper-text concept).
+export function AppTextField(input: {
+  label?: string;
+  placeholder?: string;
+  value?: string;
+  onChangeText?: (text: string) => void;
+  secureTextEntry?: boolean;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  autoCorrect?: boolean;
+  keyboardType?: KeyboardTypeOptions;
+  multiline?: boolean;
+  helperText?: string;
+  errorText?: string;
+  containerStyle?: ViewStyle;
+}) {
   const {
     label,
+    placeholder,
+    value,
+    onChangeText,
+    secureTextEntry,
+    autoCapitalize,
+    autoCorrect,
+    keyboardType,
+    multiline,
     helperText,
     errorText,
     containerStyle,
-    multiline,
-    style,
-    ...textInputProps
   } = input;
 
   return (
-    <View style={[styles.fieldBlock, containerStyle]}>
-      {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
-      <TextInput
-        multiline={multiline}
+    <View style={[styles.fieldOuter, containerStyle]}>
+      <Input
+        labelStyle={styles.fieldLabel}
+        inputContainerStyle={styles.inputContainer}
+        containerStyle={styles.inputComponentContainer}
+        errorStyle={styles.fieldError}
+        renderErrorMessage={Boolean(errorText)}
         placeholderTextColor={COLORS.mutedText}
-        style={[
+        inputStyle={[
           styles.textField,
           multiline ? styles.textFieldMultiline : null,
-          style,
         ]}
-        {...textInputProps}
+        {...(label !== undefined ? { label } : {})}
+        {...(placeholder !== undefined ? { placeholder } : {})}
+        {...(value !== undefined ? { value } : {})}
+        {...(onChangeText !== undefined ? { onChangeText } : {})}
+        {...(errorText !== undefined ? { errorMessage: errorText } : {})}
+        {...(secureTextEntry !== undefined ? { secureTextEntry } : {})}
+        {...(autoCapitalize !== undefined ? { autoCapitalize } : {})}
+        {...(autoCorrect !== undefined ? { autoCorrect } : {})}
+        {...(keyboardType !== undefined ? { keyboardType } : {})}
+        {...(multiline !== undefined ? { multiline } : {})}
       />
-      {errorText ? <Text style={styles.fieldError}>{errorText}</Text> : null}
       {!errorText && helperText ? (
         <Text style={styles.fieldHelper}>{helperText}</Text>
       ) : null}
@@ -251,33 +310,33 @@ export function AppTextField(
   );
 }
 
+// ── AppChoicePill ─────────────────────────────────────────────────────────────
+// Uses RNEUI Chip — solid when selected, outline when unselected.
 export function AppChoicePill(input: {
   label: string;
   selected?: boolean;
   onPress: () => void;
 }) {
   return (
-    <Pressable
+    <Chip
       accessibilityRole="button"
-      style={({ pressed }) => [
+      accessibilityLabel={input.label}
+      title={input.label}
+      type={input.selected ? "solid" : "outline"}
+      onPress={input.onPress}
+      buttonStyle={[
         styles.choicePill,
         input.selected ? styles.choicePillSelected : null,
-        pressed ? styles.choicePillPressed : null,
       ]}
-      onPress={input.onPress}
-    >
-      <Text
-        style={[
-          styles.choicePillLabel,
-          input.selected ? styles.choicePillLabelSelected : null,
-        ]}
-      >
-        {input.label}
-      </Text>
-    </Pressable>
+      titleStyle={[
+        styles.choicePillLabel,
+        input.selected ? styles.choicePillLabelSelected : null,
+      ]}
+    />
   );
 }
 
+// ── AppStateCard ──────────────────────────────────────────────────────────────
 export function AppStateCard(input: {
   title: string;
   description: string;
@@ -289,7 +348,7 @@ export function AppStateCard(input: {
     <SurfaceCard {...(input.tone ? { tone: input.tone } : {})}>
       <View style={styles.stateCardBody}>
         {input.loading ? (
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator color={COLORS.primary} size="large" />
         ) : null}
         <Text style={styles.stateCardTitle}>{input.title}</Text>
         <Text style={styles.stateCardDescription}>{input.description}</Text>
@@ -301,24 +360,22 @@ export function AppStateCard(input: {
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  // AppHero
   heroCard: {
     borderRadius: RADIUS.xl,
+    elevation: 6,
+    gap: SPACING.lg,
     overflow: "hidden",
     padding: SPACING.xl,
-    gap: SPACING.lg,
     shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 1,
     shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
   },
-  heroTextBlock: {
-    gap: SPACING.sm,
-  },
-  heroTrailing: {
-    alignSelf: "flex-start",
-  },
+  heroTextBlock: { gap: SPACING.sm },
+  heroTrailing: { alignSelf: "flex-start" },
   eyebrow: {
     color: "rgba(255, 250, 242, 0.76)",
     fontSize: TYPOGRAPHY.caption,
@@ -337,32 +394,31 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     lineHeight: 22,
   },
+
+  // SurfaceCard — RNEUI Card overrides
   surfaceCard: {
     backgroundColor: COLORS.surfaceRaised,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    gap: SPACING.md,
-    borderWidth: 1,
     borderColor: COLORS.border,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    elevation: 2,
+    margin: 0,
+    padding: 0,
     shadowColor: COLORS.shadow,
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 1,
     shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
   },
-  surfaceMuted: {
-    backgroundColor: COLORS.surface,
-  },
+  surfaceCardWrapper: { gap: SPACING.md, padding: SPACING.lg },
+  surfaceMuted: { backgroundColor: COLORS.surface },
   surfaceAccent: {
     backgroundColor: COLORS.accentMuted,
     borderColor: COLORS.borderStrong,
   },
-  sectionHeader: {
-    gap: SPACING.xs,
-  },
-  sectionTextBlock: {
-    gap: SPACING.xs,
-  },
+
+  // SectionHeading
+  sectionHeader: { gap: SPACING.xs },
+  sectionTextBlock: { gap: SPACING.xs },
   sectionTitle: {
     color: COLORS.text,
     fontSize: TYPOGRAPHY.title,
@@ -373,143 +429,111 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.label,
     lineHeight: 20,
   },
+
+  // MetricTile
   metricTile: {
-    minWidth: 144,
-    flex: 1,
-    borderRadius: RADIUS.md,
     backgroundColor: COLORS.surface,
-    padding: SPACING.md,
-    gap: SPACING.xs,
-    borderWidth: 1,
     borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    flex: 1,
+    gap: SPACING.xs,
+    minWidth: 144,
+    padding: SPACING.md,
   },
-  metricPrimary: {
-    backgroundColor: COLORS.primaryMuted,
-  },
-  metricSecondary: {
-    backgroundColor: COLORS.secondaryMuted,
-  },
-  metricAccent: {
-    backgroundColor: COLORS.accentMuted,
-  },
-  metricValue: {
-    color: COLORS.text,
-    fontSize: 26,
-    fontWeight: "800",
-  },
+  metricPrimary: { backgroundColor: COLORS.primaryMuted },
+  metricSecondary: { backgroundColor: COLORS.secondaryMuted },
+  metricAccent: { backgroundColor: COLORS.accentMuted },
+  metricValue: { color: COLORS.text, fontSize: 26, fontWeight: "800" },
   metricLabel: {
     color: COLORS.textSubtle,
     fontSize: TYPOGRAPHY.label,
     fontWeight: "700",
   },
+
+  // StatusBadge — RNEUI Chip overrides
+  badgeContainer: { alignSelf: "flex-start" },
   badge: {
-    alignSelf: "flex-start",
     borderRadius: RADIUS.pill,
+    borderWidth: 0,
     paddingHorizontal: SPACING.md,
     paddingVertical: 6,
-    backgroundColor: COLORS.backgroundMuted,
-  },
-  badgeInfo: {
-    backgroundColor: COLORS.secondaryMuted,
-  },
-  badgeSuccess: {
-    backgroundColor: COLORS.successMuted,
-  },
-  badgeWarning: {
-    backgroundColor: COLORS.accentMuted,
-  },
-  badgeDanger: {
-    backgroundColor: COLORS.dangerMuted,
   },
   badgeLabel: {
     color: COLORS.text,
     fontSize: TYPOGRAPHY.caption,
     fontWeight: "800",
-    textTransform: "uppercase",
     letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
-  button: {
-    minHeight: 54,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonPrimary: {
-    backgroundColor: COLORS.primary,
-  },
+
+  // AppButton — RNEUI Button overrides
+  button: { minHeight: 54, paddingHorizontal: SPACING.lg },
+  buttonPrimary: { backgroundColor: COLORS.primary },
   buttonSecondary: {
     backgroundColor: COLORS.surfaceRaised,
-    borderWidth: 1,
     borderColor: COLORS.borderStrong,
   },
-  buttonGhost: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: COLORS.overlay,
-  },
-  buttonFullWidth: {
-    width: "100%",
-  },
-  buttonPressed: {
-    opacity: 0.88,
-  },
-  buttonDisabled: {
-    opacity: 0.48,
-  },
+  buttonDisabled: { opacity: 0.48 },
+  buttonFullWidth: { width: "100%" },
   buttonLabel: {
     color: COLORS.surfaceRaised,
     fontSize: TYPOGRAPHY.body,
     fontWeight: "800",
   },
-  buttonLabelSecondary: {
-    color: COLORS.secondary,
-  },
-  buttonLabelGhost: {
-    color: COLORS.text,
-  },
+  buttonLabelSecondary: { color: COLORS.secondary },
+  buttonLabelGhost: { color: COLORS.text },
+
+  // InfoRow — RNEUI ListItem overrides
   infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: SPACING.md,
+    backgroundColor: "transparent",
+    minHeight: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
-  infoLabel: {
-    color: COLORS.textSubtle,
-    fontSize: TYPOGRAPHY.label,
-    flex: 1,
-  },
+  infoLabel: { color: COLORS.textSubtle, fontSize: TYPOGRAPHY.label },
   infoValue: {
     color: COLORS.text,
     fontSize: TYPOGRAPHY.label,
     fontWeight: "700",
-    flex: 1,
     textAlign: "right",
   },
+
+  // AppRecordCard — RNEUI Card / ListItem overrides
   recordCard: {
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
     backgroundColor: COLORS.surface,
-    borderWidth: 1,
     borderColor: COLORS.border,
-    gap: SPACING.xs,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    margin: 0,
+    padding: SPACING.md,
   },
+  recordCardWrapper: { gap: SPACING.xs },
+  recordCardContent: { gap: SPACING.xs },
   recordCardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "flex-start",
+    flexDirection: "row",
     gap: SPACING.md,
+    justifyContent: "space-between",
+    marginBottom: SPACING.xs,
   },
   recordCardTitle: {
+    color: COLORS.text,
     flex: 1,
     fontSize: TYPOGRAPHY.body,
     fontWeight: "800",
-    color: COLORS.text,
   },
-  recordCardPressed: {
-    opacity: 0.88,
-  },
-  fieldBlock: {
-    gap: SPACING.xs,
+
+  // AppTextField — RNEUI Input overrides
+  fieldOuter: { gap: SPACING.xs },
+  // Remove RNEUI's default horizontal padding from the outer Input container
+  inputComponentContainer: { marginBottom: 0, paddingHorizontal: 0 },
+  inputContainer: {
+    backgroundColor: COLORS.surfaceRaised,
+    borderColor: COLORS.borderStrong,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    paddingHorizontal: SPACING.md,
   },
   fieldLabel: {
     color: COLORS.text,
@@ -517,19 +541,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   textField: {
-    borderWidth: 1,
-    borderColor: COLORS.borderStrong,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 14,
-    backgroundColor: COLORS.surfaceRaised,
     color: COLORS.text,
     fontSize: TYPOGRAPHY.body,
+    paddingVertical: 14,
   },
-  textFieldMultiline: {
-    minHeight: 112,
-    textAlignVertical: "top",
-  },
+  textFieldMultiline: { minHeight: 112, textAlignVertical: "top" },
   fieldHelper: {
     color: COLORS.textSubtle,
     fontSize: TYPOGRAPHY.caption,
@@ -540,33 +556,31 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
+
+  // AppChoicePill — RNEUI Chip overrides
   choicePill: {
-    borderRadius: RADIUS.pill,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.pill,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
   },
   choicePillSelected: {
-    borderColor: COLORS.primaryDeep,
     backgroundColor: COLORS.primaryMuted,
-  },
-  choicePillPressed: {
-    opacity: 0.88,
+    borderColor: COLORS.primaryDeep,
   },
   choicePillLabel: {
     color: COLORS.text,
     fontSize: TYPOGRAPHY.caption,
     fontWeight: "700",
   },
-  choicePillLabelSelected: {
-    color: COLORS.primaryDeep,
-  },
+  choicePillLabelSelected: { color: COLORS.primaryDeep },
+
+  // AppStateCard
   stateCardBody: {
     alignItems: "center",
-    justifyContent: "center",
     gap: SPACING.sm,
+    justifyContent: "center",
     paddingVertical: SPACING.xl,
   },
   stateCardTitle: {
@@ -581,8 +595,5 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
   },
-  stateCardAction: {
-    width: "100%",
-    marginTop: SPACING.sm,
-  },
+  stateCardAction: { marginTop: SPACING.sm, width: "100%" },
 });
