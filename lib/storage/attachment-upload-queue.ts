@@ -4,6 +4,8 @@ import type { FindingRecord } from "../../../shared/types/api";
 
 export type QueuedAttachmentUploadStatus = "pending" | "failed";
 
+export type QueuedChecklistResultStatus = "pending" | "failed";
+
 export interface QueuedAttachmentUpload {
   accuracyMeters?: number;
   capturedAt?: string;
@@ -20,8 +22,25 @@ export interface QueuedAttachmentUpload {
   uri: string;
 }
 
+export interface QueuedChecklistResult {
+  id: string;
+  inspectionId: string;
+  lastError?: string;
+  queuedAt: string;
+  remarks?: string;
+  retryCount: number;
+  status: QueuedChecklistResultStatus;
+  templateId: string;
+  templateTitle: string;
+  value: FindingRecord["severity"] extends never
+    ? never
+    : "pass" | "fail" | "not_applicable";
+}
+
 const ATTACHMENT_UPLOAD_QUEUE_KEY = "inspect-ph-mobile-attachment-upload-queue";
 const MAX_QUEUED_ATTACHMENTS = 20;
+const CHECKLIST_RESULT_QUEUE_KEY = "inspect-ph-mobile-checklist-result-queue";
+const MAX_QUEUED_CHECKLIST_RESULTS = 50;
 
 async function readQueue(): Promise<QueuedAttachmentUpload[]> {
   const rawValue = await AsyncStorage.getItem(ATTACHMENT_UPLOAD_QUEUE_KEY);
@@ -41,7 +60,123 @@ async function readQueue(): Promise<QueuedAttachmentUpload[]> {
 }
 
 async function writeQueue(queue: QueuedAttachmentUpload[]) {
-  await AsyncStorage.setItem(ATTACHMENT_UPLOAD_QUEUE_KEY, JSON.stringify(queue));
+  await AsyncStorage.setItem(
+    ATTACHMENT_UPLOAD_QUEUE_KEY,
+    JSON.stringify(queue),
+  );
+}
+
+async function readChecklistQueue(): Promise<QueuedChecklistResult[]> {
+  const rawValue = await AsyncStorage.getItem(CHECKLIST_RESULT_QUEUE_KEY);
+
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as QueuedChecklistResult[];
+
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    await AsyncStorage.removeItem(CHECKLIST_RESULT_QUEUE_KEY);
+    return [];
+  }
+}
+
+async function writeChecklistQueue(queue: QueuedChecklistResult[]) {
+  await AsyncStorage.setItem(CHECKLIST_RESULT_QUEUE_KEY, JSON.stringify(queue));
+}
+
+export async function listQueuedChecklistResults(inspectionId: string) {
+  const queue = await readChecklistQueue();
+
+  return queue.filter((item) => item.inspectionId === inspectionId);
+}
+
+export async function enqueueChecklistResult(
+  input: Omit<
+    QueuedChecklistResult,
+    "id" | "queuedAt" | "retryCount" | "status"
+  >,
+) {
+  const queue = await readChecklistQueue();
+  const nextItem: QueuedChecklistResult = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    inspectionId: input.inspectionId,
+    queuedAt: new Date().toISOString(),
+    retryCount: 0,
+    status: "pending",
+    templateId: input.templateId,
+    templateTitle: input.templateTitle,
+    value: input.value,
+    ...(typeof input.remarks === "string" ? { remarks: input.remarks } : {}),
+  };
+
+  const dedupedQueue = queue.filter(
+    (item) =>
+      !(
+        item.inspectionId === input.inspectionId &&
+        item.templateId === input.templateId
+      ),
+  );
+  const nextQueue = [nextItem, ...dedupedQueue].slice(
+    0,
+    MAX_QUEUED_CHECKLIST_RESULTS,
+  );
+
+  await writeChecklistQueue(nextQueue);
+
+  return nextItem;
+}
+
+export async function markQueuedChecklistResultFailed(
+  id: string,
+  lastError: string,
+) {
+  const queue = await readChecklistQueue();
+  const nextQueue = queue.map((item) =>
+    item.id === id
+      ? {
+          ...item,
+          lastError,
+          retryCount: item.retryCount + 1,
+          status: "failed" as const,
+        }
+      : item,
+  );
+
+  await writeChecklistQueue(nextQueue);
+
+  return nextQueue;
+}
+
+export async function markQueuedChecklistResultPending(id: string) {
+  const queue = await readChecklistQueue();
+  const nextQueue = queue.map((item) =>
+    item.id === id
+      ? (() => {
+          const { lastError: _lastError, ...rest } = item;
+
+          return {
+            ...rest,
+            status: "pending" as const,
+          };
+        })()
+      : item,
+  );
+
+  await writeChecklistQueue(nextQueue);
+
+  return nextQueue;
+}
+
+export async function removeQueuedChecklistResult(id: string) {
+  const queue = await readChecklistQueue();
+  const nextQueue = queue.filter((item) => item.id !== id);
+
+  await writeChecklistQueue(nextQueue);
+
+  return nextQueue;
 }
 
 export async function listQueuedAttachmentUploads(inspectionId: string) {
@@ -51,7 +186,10 @@ export async function listQueuedAttachmentUploads(inspectionId: string) {
 }
 
 export async function enqueueAttachmentUpload(
-  input: Omit<QueuedAttachmentUpload, "id" | "queuedAt" | "retryCount" | "status">,
+  input: Omit<
+    QueuedAttachmentUpload,
+    "id" | "queuedAt" | "retryCount" | "status"
+  >,
 ) {
   const queue = await readQueue();
   const nextItem: QueuedAttachmentUpload = {
@@ -65,7 +203,9 @@ export async function enqueueAttachmentUpload(
     uri: input.uri,
     ...(input.capturedAt ? { capturedAt: input.capturedAt } : {}),
     ...(typeof input.latitude === "number" ? { latitude: input.latitude } : {}),
-    ...(typeof input.longitude === "number" ? { longitude: input.longitude } : {}),
+    ...(typeof input.longitude === "number"
+      ? { longitude: input.longitude }
+      : {}),
     ...(typeof input.accuracyMeters === "number"
       ? { accuracyMeters: input.accuracyMeters }
       : {}),
@@ -188,9 +328,13 @@ export async function enqueueFindingCreate(
     severity: input.severity,
     status: "pending",
     title: input.title,
-    ...(input.correctiveAction ? { correctiveAction: input.correctiveAction } : {}),
+    ...(input.correctiveAction
+      ? { correctiveAction: input.correctiveAction }
+      : {}),
     ...(typeof input.latitude === "number" ? { latitude: input.latitude } : {}),
-    ...(typeof input.longitude === "number" ? { longitude: input.longitude } : {}),
+    ...(typeof input.longitude === "number"
+      ? { longitude: input.longitude }
+      : {}),
     ...(typeof input.accuracyMeters === "number"
       ? { accuracyMeters: input.accuracyMeters }
       : {}),
@@ -252,12 +396,14 @@ export async function removeQueuedFindingCreate(id: string) {
   return nextQueue;
 }
 export async function countAllPendingQueueItems(): Promise<number> {
-  const [attachments, findings] = await Promise.all([
+  const [attachments, findings, checklistResults] = await Promise.all([
     readQueue(),
     readFindingQueue(),
+    readChecklistQueue(),
   ]);
 
   return (
+    checklistResults.filter((item) => item.status === "pending").length +
     attachments.filter((item) => item.status === "pending").length +
     findings.filter((item) => item.status === "pending").length
   );

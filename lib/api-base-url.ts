@@ -1,5 +1,7 @@
 import Constants from "expo-constants";
 
+const LOCAL_API_BASE_URL = "http://localhost:4000/api/v1";
+
 function normalizeApiBaseUrl(value: string) {
   return value.trim().replace(/\/$/, "");
 }
@@ -32,13 +34,19 @@ export function resolveApiBaseUrl() {
     return normalizeApiBaseUrl(configuredApiUrl);
   }
 
+  const preferExpoHost = process.env.EXPO_PUBLIC_USE_EXPO_HOST === "true";
+
+  if (!preferExpoHost) {
+    return LOCAL_API_BASE_URL;
+  }
+
   const expoHost = resolveExpoHost();
 
   if (expoHost) {
     return `http://${expoHost}:4000/api/v1`;
   }
 
-  return "http://localhost:4000/api/v1";
+  return LOCAL_API_BASE_URL;
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();

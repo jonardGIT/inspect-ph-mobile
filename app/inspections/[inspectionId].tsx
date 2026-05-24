@@ -37,16 +37,22 @@ import {
   upsertInspectionChecklistResult,
 } from "@/lib/api";
 import {
+  enqueueChecklistResult,
   enqueueAttachmentUpload,
   enqueueFindingCreate,
+  listQueuedChecklistResults,
   listQueuedAttachmentUploads,
   listQueuedFindingCreates,
+  markQueuedChecklistResultFailed,
+  markQueuedChecklistResultPending,
   markQueuedAttachmentUploadFailed,
   markQueuedAttachmentUploadPending,
   markQueuedFindingCreateFailed,
   markQueuedFindingCreatePending,
+  removeQueuedChecklistResult,
   removeQueuedAttachmentUpload,
   removeQueuedFindingCreate,
+  type QueuedChecklistResult,
   type QueuedAttachmentUpload,
   type QueuedFindingCreate,
 } from "../../lib/storage/attachment-upload-queue";
@@ -66,6 +72,15 @@ type FindingSeverity = FindingRecord["severity"];
 interface ChecklistDraft {
   remarks: string;
   status: ChecklistStatus;
+}
+
+interface FindingDraftSnapshot {
+  correctiveAction: string;
+  description: string;
+  photoAsset: ImagePicker.ImagePickerAsset | null;
+  savedAt: string;
+  severity: FindingSeverity;
+  title: string;
 }
 
 export default function InspectionDetailScreen() {
@@ -89,6 +104,9 @@ export default function InspectionDetailScreen() {
   const [queuedFindings, setQueuedFindings] = useState<QueuedFindingCreate[]>(
     [],
   );
+  const [queuedChecklistResults, setQueuedChecklistResults] = useState<
+    QueuedChecklistResult[]
+  >([]);
   const [queuedAttachments, setQueuedAttachments] = useState<
     QueuedAttachmentUpload[]
   >([]);
@@ -114,6 +132,9 @@ export default function InspectionDetailScreen() {
   const [retryingFindingId, setRetryingFindingId] = useState<string | null>(
     null,
   );
+  const [retryingChecklistId, setRetryingChecklistId] = useState<string | null>(
+    null,
+  );
   const [retryingAttachmentId, setRetryingAttachmentId] = useState<
     string | null
   >(null);
@@ -122,6 +143,15 @@ export default function InspectionDetailScreen() {
   const [certificateError, setCertificateError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isStale, setIsStale] = useState(false);
+  const [findingDraftHydrated, setFindingDraftHydrated] = useState(false);
+  const [findingDraftRestored, setFindingDraftRestored] = useState(false);
+  const [findingDraftSavedAt, setFindingDraftSavedAt] = useState<string | null>(
+    null,
+  );
+
+  const findingDraftStorageKey = inspectionId
+    ? `inspection:${inspectionId}:finding-draft`
+    : null;
 
   function resetFindingDraft() {
     setFindingTitle("");
@@ -129,7 +159,104 @@ export default function InspectionDetailScreen() {
     setFindingCorrectiveAction("");
     setFindingSeverity("medium");
     setFindingPhotoAsset(null);
+    setFindingDraftRestored(false);
+    setFindingDraftSavedAt(null);
+
+    if (findingDraftStorageKey) {
+      void AsyncStorage.removeItem(findingDraftStorageKey);
+    }
   }
+
+  useEffect(() => {
+    if (!findingDraftStorageKey) {
+      setFindingDraftHydrated(true);
+      return;
+    }
+
+    let isCancelled = false;
+
+    AsyncStorage.getItem(findingDraftStorageKey)
+      .then((raw) => {
+        if (isCancelled || !raw) {
+          return;
+        }
+
+        const draft = JSON.parse(raw) as FindingDraftSnapshot;
+
+        setFindingTitle(draft.title);
+        setFindingDescription(draft.description);
+        setFindingCorrectiveAction(draft.correctiveAction);
+        setFindingSeverity(draft.severity);
+        setFindingPhotoAsset(draft.photoAsset ?? null);
+        setFindingDraftSavedAt(draft.savedAt);
+        setFindingDraftRestored(true);
+      })
+      .catch(() => {
+        /* ignore bad local draft payloads */
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setFindingDraftHydrated(true);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+      setFindingDraftHydrated(false);
+      setFindingDraftRestored(false);
+      setFindingDraftSavedAt(null);
+    };
+  }, [findingDraftStorageKey]);
+
+  useEffect(() => {
+    if (!findingDraftHydrated || !findingDraftStorageKey) {
+      return;
+    }
+
+    const hasDraftContent = Boolean(
+      findingTitle.trim() ||
+      findingDescription.trim() ||
+      findingCorrectiveAction.trim() ||
+      findingPhotoAsset ||
+      findingSeverity !== "medium",
+    );
+
+    const handle = setTimeout(() => {
+      if (!hasDraftContent) {
+        void AsyncStorage.removeItem(findingDraftStorageKey);
+        setFindingDraftSavedAt(null);
+        return;
+      }
+
+      const savedAt = new Date().toISOString();
+      const snapshot: FindingDraftSnapshot = {
+        correctiveAction: findingCorrectiveAction,
+        description: findingDescription,
+        photoAsset: findingPhotoAsset,
+        savedAt,
+        severity: findingSeverity,
+        title: findingTitle,
+      };
+
+      void AsyncStorage.setItem(
+        findingDraftStorageKey,
+        JSON.stringify(snapshot),
+      );
+      setFindingDraftSavedAt(savedAt);
+    }, 500);
+
+    return () => {
+      clearTimeout(handle);
+    };
+  }, [
+    findingCorrectiveAction,
+    findingDescription,
+    findingDraftHydrated,
+    findingDraftStorageKey,
+    findingPhotoAsset,
+    findingSeverity,
+    findingTitle,
+  ]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -158,6 +285,15 @@ export default function InspectionDetailScreen() {
 
       if (!isCancelled) {
         setQueuedFindings(nextQueuedFindings);
+      }
+    }
+
+    async function loadQueuedChecklistResults() {
+      const nextQueuedChecklistResults =
+        await listQueuedChecklistResults(inspectionId);
+
+      if (!isCancelled) {
+        setQueuedChecklistResults(nextQueuedChecklistResults);
       }
     }
 
@@ -249,6 +385,7 @@ export default function InspectionDetailScreen() {
           `inspection:${inspectionId}`,
           JSON.stringify(detail),
         );
+        await loadQueuedChecklistResults();
         await loadQueuedFindings();
         await loadQueuedAttachments();
       } catch (loadError) {
@@ -365,6 +502,14 @@ export default function InspectionDetailScreen() {
     setSavingTemplateId(template.id);
     setChecklistError(null);
 
+    const queuedPayload = {
+      inspectionId,
+      ...(draft.remarks.trim() ? { remarks: draft.remarks.trim() } : {}),
+      templateId: template.id,
+      templateTitle: template.title,
+      value: draft.status,
+    };
+
     try {
       const savedResult = await upsertInspectionChecklistResult({
         accessToken,
@@ -387,14 +532,115 @@ export default function InspectionDetailScreen() {
           result.template.id === template.id ? savedResult : result,
         );
       });
+
+      setQueuedChecklistResults((currentItems) =>
+        currentItems.filter((item) => item.templateId !== template.id),
+      );
     } catch (saveError) {
-      setChecklistError(
+      const errorMessage =
         saveError instanceof Error
           ? saveError.message
-          : "Unable to save checklist result.",
-      );
+          : "Unable to save checklist result.";
+
+      if (
+        saveError instanceof Error &&
+        !saveError.message.toLowerCase().includes("permission") &&
+        !saveError.message.toLowerCase().includes("required")
+      ) {
+        const queuedItem = await enqueueChecklistResult(queuedPayload);
+
+        setQueuedChecklistResults((currentItems) => [
+          queuedItem,
+          ...currentItems.filter(
+            (item) => item.templateId !== queuedItem.templateId,
+          ),
+        ]);
+        setChecklistError(
+          "Checklist result was queued for retry. Use the sync status below when the network is available.",
+        );
+      } else {
+        setChecklistError(errorMessage);
+      }
     } finally {
       setSavingTemplateId(null);
+    }
+  }
+
+  async function handleRetryQueuedChecklist(item: QueuedChecklistResult) {
+    if (!accessToken || !inspectionId) {
+      return;
+    }
+
+    setRetryingChecklistId(item.id);
+    setChecklistError(null);
+
+    try {
+      await markQueuedChecklistResultPending(item.id);
+      setQueuedChecklistResults((currentItems) =>
+        currentItems.map((currentItem) =>
+          currentItem.id === item.id
+            ? (() => {
+                const { lastError: _lastError, ...rest } = currentItem;
+
+                return { ...rest, status: "pending" as const };
+              })()
+            : currentItem,
+        ),
+      );
+
+      const savedResult = await upsertInspectionChecklistResult({
+        accessToken,
+        inspectionId,
+        ...(item.remarks ? { remarks: item.remarks } : {}),
+        status: item.value,
+        templateId: item.templateId,
+      });
+
+      await removeQueuedChecklistResult(item.id);
+      setQueuedChecklistResults((currentItems) =>
+        currentItems.filter((currentItem) => currentItem.id !== item.id),
+      );
+      setChecklistResults((currentResults) => {
+        const existingIndex = currentResults.findIndex(
+          (result) => result.template.id === item.templateId,
+        );
+
+        if (existingIndex === -1) {
+          return [...currentResults, savedResult];
+        }
+
+        return currentResults.map((result) =>
+          result.template.id === item.templateId ? savedResult : result,
+        );
+      });
+    } catch (retryError) {
+      const errorMessage =
+        retryError instanceof Error
+          ? retryError.message
+          : "Unable to retry the queued checklist result.";
+
+      await markQueuedChecklistResultFailed(item.id, errorMessage);
+      setQueuedChecklistResults((currentItems) =>
+        currentItems.map((currentItem) =>
+          currentItem.id === item.id
+            ? {
+                ...currentItem,
+                lastError: errorMessage,
+                retryCount: currentItem.retryCount + 1,
+                status: "failed",
+              }
+            : currentItem,
+        ),
+      );
+      setChecklistError(errorMessage);
+    } finally {
+      setRetryingChecklistId(null);
+    }
+  }
+
+  async function handleRetryAllQueuedChecklistResults() {
+    for (const item of queuedChecklistResults) {
+      await handleRetryQueuedChecklist(item);
     }
   }
 
@@ -793,6 +1039,9 @@ export default function InspectionDetailScreen() {
     checklistTemplates,
     checklistResults,
   );
+  const findingPhotoAssessment = findingPhotoAsset
+    ? assessFindingPhoto(findingPhotoAsset)
+    : null;
   const showFireSafetyCertificateCard =
     Boolean(fireSafetyCertificate) ||
     Boolean(certificateError) ||
@@ -980,6 +1229,71 @@ export default function InspectionDetailScreen() {
             {checklistError ? (
               <AppMessage message={checklistError} tone="danger" />
             ) : null}
+            {queuedChecklistResults.length > 0 ? (
+              <SurfaceCard tone="muted" style={styles.nestedCard}>
+                <SectionHeading
+                  title="Sync status"
+                  description={`${queuedChecklistResults.length} checklist item${queuedChecklistResults.length === 1 ? "" : "s"} waiting for retry.`}
+                />
+                <AppButton
+                  disabled={Boolean(retryingChecklistId)}
+                  fullWidth
+                  label="Retry pending checklist items"
+                  loading={Boolean(retryingChecklistId)}
+                  onPress={() => {
+                    void handleRetryAllQueuedChecklistResults();
+                  }}
+                  tone="secondary"
+                />
+                {queuedChecklistResults.map((item) => (
+                  <AppRecordCard
+                    key={item.id}
+                    style={styles.queuedRow}
+                    title={item.templateTitle}
+                    trailing={
+                      <AppButton
+                        disabled={retryingChecklistId === item.id}
+                        label="Retry"
+                        loading={retryingChecklistId === item.id}
+                        onPress={() => {
+                          void handleRetryQueuedChecklist(item);
+                        }}
+                        tone="secondary"
+                      />
+                    }
+                  >
+                    <AppText size="label" style={styles.rowMeta} tone="subtle">
+                      {item.status === "pending"
+                        ? "Pending sync"
+                        : "Retry failed"}{" "}
+                      · Attempt {item.retryCount + 1}
+                    </AppText>
+                    <AppText size="label" style={styles.rowMeta} tone="subtle">
+                      Status {item.value.replace("_", " ")} · Queued{" "}
+                      {formatDateTime(item.queuedAt)}
+                    </AppText>
+                    {item.remarks ? (
+                      <AppText
+                        size="label"
+                        style={styles.rowMeta}
+                        tone="subtle"
+                      >
+                        Remarks: {item.remarks}
+                      </AppText>
+                    ) : null}
+                    {item.lastError ? (
+                      <AppText
+                        size="label"
+                        style={styles.errorText}
+                        tone="danger"
+                      >
+                        {item.lastError}
+                      </AppText>
+                    ) : null}
+                  </AppRecordCard>
+                ))}
+              </SurfaceCard>
+            ) : null}
             {checklistItems.length === 0 ? (
               <AppText size="label" style={styles.sectionBody} tone="subtle">
                 No checklist responses yet.
@@ -1066,6 +1380,17 @@ export default function InspectionDetailScreen() {
               title="Findings"
               description="Record field issues with severity and optional corrective action."
             />
+            {findingDraftRestored ? (
+              <AppMessage
+                message="Draft restored from this device so you can keep working offline."
+                tone="info"
+              />
+            ) : null}
+            {findingDraftSavedAt ? (
+              <AppText size="label" style={styles.rowMeta} tone="subtle">
+                Draft auto-saved locally {formatDateTime(findingDraftSavedAt)}
+              </AppText>
+            ) : null}
             {/* Photo-first: capture evidence before filling the form */}
             <AppButton
               disabled={isCapturingFindingPhoto || isCreatingFinding}
@@ -1081,6 +1406,44 @@ export default function InspectionDetailScreen() {
               }}
               tone={findingPhotoAsset ? "secondary" : "primary"}
             />
+            {findingPhotoAssessment ? (
+              <SurfaceCard tone="muted" style={styles.nestedCard}>
+                <SectionHeading
+                  title={findingPhotoAssessment.summary}
+                  description="Quick photo check before you leave the site. Inspect PH uses these local hints only; final evidence review still happens in the record."
+                  action={
+                    <StatusBadge
+                      label={findingPhotoAssessment.badgeLabel}
+                      tone={findingPhotoAssessment.badgeTone}
+                    />
+                  }
+                />
+                {findingPhotoAssessment.metadataLabel ? (
+                  <AppText size="label" style={styles.rowMeta} tone="subtle">
+                    {findingPhotoAssessment.metadataLabel}
+                  </AppText>
+                ) : null}
+                <AppText size="label" style={styles.sectionBody} tone="subtle">
+                  If submit succeeds, this photo uploads with the finding. If
+                  the upload fails, Inspect PH queues the evidence for retry so
+                  you do not lose the capture.
+                </AppText>
+                {findingPhotoAssessment.hints.map((hint) => (
+                  <AppText
+                    key={hint}
+                    size="label"
+                    style={styles.photoHintText}
+                    tone={
+                      findingPhotoAssessment.badgeTone === "danger"
+                        ? "danger"
+                        : "subtle"
+                    }
+                  >
+                    {`- ${hint}`}
+                  </AppText>
+                ))}
+              </SurfaceCard>
+            ) : null}
             <AppTextField
               label="Finding title"
               placeholder="Finding title"
@@ -1423,6 +1786,57 @@ function resolveAttachmentFileName(
   return `${source}-${Date.now()}.${extension}`;
 }
 
+function assessFindingPhoto(asset: ImagePicker.ImagePickerAsset) {
+  const hints: string[] = [];
+  const width = typeof asset.width === "number" ? asset.width : null;
+  const height = typeof asset.height === "number" ? asset.height : null;
+  const fileSize = typeof asset.fileSize === "number" ? asset.fileSize : null;
+
+  if (width !== null && height !== null && Math.min(width, height) < 1200) {
+    hints.push(
+      "Resolution looks low. Step closer or hold the phone steadier, then retake before leaving the site.",
+    );
+  }
+
+  if (fileSize !== null && fileSize < 220 * 1024) {
+    hints.push(
+      "The file is small, which can mean blur or heavy compression. Retake if text, cracks, or violations are not readable at a glance.",
+    );
+  }
+
+  if (
+    width !== null &&
+    height !== null &&
+    Math.max(width, height) / Math.max(1, Math.min(width, height)) > 2.1
+  ) {
+    hints.push(
+      "The frame is very wide. Re-center the actual defect or safety issue so it fills more of the shot.",
+    );
+  }
+
+  return {
+    badgeLabel: hints.length > 0 ? "Retake suggested" : "Evidence-ready photo",
+    badgeTone: hints.length > 0 ? ("danger" as const) : ("success" as const),
+    hints:
+      hints.length > 0
+        ? hints
+        : [
+            "Keep this capture if the hazard edge, permit detail, or violation is obvious without zooming.",
+          ],
+    metadataLabel: [
+      width !== null && height !== null ? `${width}x${height}` : null,
+      fileSize !== null ? `${(fileSize / 1024).toFixed(0)} KB` : null,
+      asset.mimeType ?? null,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    summary:
+      hints.length > 0
+        ? "Retake suggested before you submit the finding"
+        : "Photo looks ready for evidence capture",
+  };
+}
+
 function getStatusTone(status: InspectionRecord["status"]) {
   if (status === "overdue") {
     return "danger" as const;
@@ -1567,6 +1981,10 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: TYPOGRAPHY.label,
     color: COLORS.danger,
+    lineHeight: 20,
+  },
+  photoHintText: {
+    fontSize: TYPOGRAPHY.label,
     lineHeight: 20,
   },
 });
