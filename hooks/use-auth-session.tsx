@@ -28,7 +28,7 @@ const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
 const ROLE_FALLBACK_PROFILES: Record<
   string,
   {
-    accessScope: "global" | "lgu" | "office" | "assigned";
+    accessScope: "global" | "lgu" | "office" | "assigned" | "own";
     label: string;
     permissions: string[];
   }
@@ -48,6 +48,16 @@ const ROLE_FALLBACK_PROFILES: Record<
   office_clerk: {
     accessScope: "office",
     label: "Office Clerk",
+    permissions: [],
+  },
+  business_owner: {
+    accessScope: "own",
+    label: "Business Owner",
+    permissions: [],
+  },
+  citizen: {
+    accessScope: "own",
+    label: "Citizen",
     permissions: [],
   },
 };

@@ -1,8 +1,7 @@
-import { ActivityIndicator, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
 import { Redirect } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 
-import { COLORS } from "@/constants/theme";
+import { AppScreen, AppStateCard } from "@/components/mobile-ui";
 import { useAuthSession } from "@/hooks/use-auth-session";
 
 export default function RootIndexScreen() {
@@ -10,9 +9,13 @@ export default function RootIndexScreen() {
 
   if (!isHydrated) {
     return (
-      <SafeAreaView style={styles.shell}>
-        <ActivityIndicator color={COLORS.primary} size="large" />
-      </SafeAreaView>
+      <AppScreen contentContainerStyle={styles.shell}>
+        <AppStateCard
+          description="Restoring your secure session and route state."
+          loading
+          title="Preparing mobile workspace"
+        />
+      </AppScreen>
     );
   }
 
@@ -25,9 +28,7 @@ export default function RootIndexScreen() {
 
 const styles = StyleSheet.create({
   shell: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: COLORS.background,
   },
 });

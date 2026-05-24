@@ -1,16 +1,123 @@
 import { LinearGradient } from "expo-linear-gradient";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import {
-  ActivityIndicator,
+  ScrollView,
   StyleSheet,
-  Text,
   View,
   type KeyboardTypeOptions,
+  type RefreshControlProps,
+  type TextStyle,
   type ViewStyle,
 } from "react-native";
-import { Button, Card, Chip, Input, ListItem } from "@rneui/themed";
+import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  Button,
+  Card,
+  Chip,
+  Input,
+  LinearProgress,
+  ListItem,
+  Text,
+} from "@rneui/themed";
 
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "@/constants/theme";
+
+type AppTextTone = "default" | "subtle" | "inverse" | "danger" | "accent";
+type AppTextWeight = "regular" | "semibold" | "bold" | "heavy";
+type AppTextSize = "caption" | "label" | "body" | "bodyLarge" | "title";
+
+const TEXT_TONE_STYLE: Record<AppTextTone, TextStyle> = {
+  default: { color: COLORS.text },
+  subtle: { color: COLORS.textSubtle },
+  inverse: { color: COLORS.surfaceRaised },
+  danger: { color: COLORS.danger },
+  accent: { color: COLORS.accent },
+};
+
+const TEXT_WEIGHT_STYLE: Record<AppTextWeight, TextStyle> = {
+  regular: { fontWeight: "500" },
+  semibold: { fontWeight: "600" },
+  bold: { fontWeight: "700" },
+  heavy: { fontWeight: "800" },
+};
+
+const TEXT_SIZE_STYLE: Record<AppTextSize, TextStyle> = {
+  caption: { fontSize: TYPOGRAPHY.caption },
+  label: { fontSize: TYPOGRAPHY.label },
+  body: { fontSize: TYPOGRAPHY.body },
+  bodyLarge: { fontSize: TYPOGRAPHY.bodyLarge },
+  title: { fontSize: TYPOGRAPHY.title },
+};
+
+export function AppText(input: {
+  children: ReactNode;
+  tone?: AppTextTone;
+  weight?: AppTextWeight;
+  size?: AppTextSize;
+  style?: TextStyle;
+}) {
+  return (
+    <Text
+      style={[
+        TEXT_TONE_STYLE[input.tone ?? "default"],
+        TEXT_WEIGHT_STYLE[input.weight ?? "regular"],
+        TEXT_SIZE_STYLE[input.size ?? "body"],
+        input.style,
+      ]}
+    >
+      {input.children}
+    </Text>
+  );
+}
+
+export function AppScreen(input: {
+  children: ReactNode;
+  contentContainerStyle?: ViewStyle;
+  refreshControl?: ReactElement<RefreshControlProps>;
+}) {
+  return (
+    <SafeAreaView style={styles.screenSafeArea}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.screenContent,
+          input.contentContainerStyle,
+        ]}
+        {...(input.refreshControl
+          ? { refreshControl: input.refreshControl }
+          : {})}
+      >
+        {input.children}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+export function AppMessage(input: {
+  message: string;
+  tone?: "danger" | "info";
+}) {
+  const isDanger = input.tone === "danger";
+
+  return (
+    <ListItem
+      containerStyle={[
+        styles.messageCard,
+        isDanger ? styles.messageDanger : null,
+      ]}
+    >
+      <ListItem.Content>
+        <AppText
+          size="label"
+          style={styles.messageText}
+          tone={isDanger ? "danger" : "accent"}
+          weight="semibold"
+        >
+          {input.message}
+        </AppText>
+      </ListItem.Content>
+    </ListItem>
+  );
+}
 
 // ── AppHero ───────────────────────────────────────────────────────────────────
 // Kept custom — uses LinearGradient with no RNEUI equivalent.
@@ -348,10 +455,18 @@ export function AppStateCard(input: {
     <SurfaceCard {...(input.tone ? { tone: input.tone } : {})}>
       <View style={styles.stateCardBody}>
         {input.loading ? (
-          <ActivityIndicator color={COLORS.primary} size="large" />
+          <LinearProgress
+            color={COLORS.primary}
+            style={styles.stateCardLoader}
+            variant="indeterminate"
+          />
         ) : null}
-        <Text style={styles.stateCardTitle}>{input.title}</Text>
-        <Text style={styles.stateCardDescription}>{input.description}</Text>
+        <AppText size="title" style={styles.stateCardTitle} weight="heavy">
+          {input.title}
+        </AppText>
+        <AppText size="label" style={styles.stateCardDescription} tone="subtle">
+          {input.description}
+        </AppText>
         {input.action ? (
           <View style={styles.stateCardAction}>{input.action}</View>
         ) : null}
@@ -362,6 +477,30 @@ export function AppStateCard(input: {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+  screenSafeArea: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  screenContent: {
+    padding: SPACING.lg,
+    gap: SPACING.lg,
+    paddingBottom: SPACING.xxl,
+  },
+  messageCard: {
+    backgroundColor: COLORS.accentMuted,
+    borderColor: COLORS.accent,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    margin: 0,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  messageDanger: {
+    backgroundColor: COLORS.dangerMuted,
+    borderColor: COLORS.danger,
+  },
+  messageText: { lineHeight: 20 },
+
   // AppHero
   heroCard: {
     borderRadius: RADIUS.xl,
@@ -583,15 +722,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: SPACING.xl,
   },
+  stateCardLoader: { borderRadius: RADIUS.pill, width: "100%" },
   stateCardTitle: {
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.title,
-    fontWeight: "800",
     textAlign: "center",
   },
   stateCardDescription: {
-    color: COLORS.textSubtle,
-    fontSize: TYPOGRAPHY.label,
     lineHeight: 20,
     textAlign: "center",
   },

@@ -11,6 +11,7 @@ import { Redirect, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
+  AppButton,
   AppHero,
   AppStateCard,
   MetricTile,
@@ -22,6 +23,7 @@ import SyncStatusBar from "@/components/sync-status-bar";
 import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from "@/constants/theme";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { ApiRequestError, getInspectionSummary } from "@/lib/api";
+import { canAccessFieldWorkspace } from "@/lib/role-surface";
 
 import type { InspectionSummary } from "../../../shared/types/api";
 
@@ -92,6 +94,33 @@ export default function InspectScreen() {
   }, [loadSummary]);
 
   if (!session) return <Redirect href="/login" />;
+
+  if (!canAccessFieldWorkspace(session.user.role)) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <AppHero
+            eyebrow="Field workspace"
+            title="Inspector-only tools"
+            description="Field execution stays on mobile for inspectors. Your role should use the dashboard for primary operational work."
+          />
+          <AppStateCard
+            title="Use the dashboard for this role"
+            description="Schedule review, intake, approvals, reports, and administration are intentionally kept off the mobile field workspace for non-inspector roles."
+            action={
+              <AppButton
+                fullWidth
+                label="Back to home"
+                onPress={() => {
+                  router.replace("/(tabs)");
+                }}
+              />
+            }
+          />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>

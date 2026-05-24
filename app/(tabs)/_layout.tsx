@@ -3,18 +3,11 @@ import { Tabs } from "expo-router";
 
 import { COLORS } from "@/constants/theme";
 import { useAuthSession } from "@/hooks/use-auth-session";
-
-const FIELD_ROLES = new Set([
-  "inspector",
-  "lgu_admin",
-  "office_supervisor",
-  "office_clerk",
-  "admin",
-]);
+import { canAccessFieldWorkspace } from "@/lib/role-surface";
 
 export default function TabLayout() {
   const { session } = useAuthSession();
-  const showField = session !== null && FIELD_ROLES.has(session.user.role);
+  const showField = canAccessFieldWorkspace(session?.user.role);
 
   return (
     <Tabs

@@ -1,19 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { RefreshControl, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
   AppButton,
   AppHero,
   AppRecordCard,
+  AppScreen,
   AppStateCard,
+  AppText,
   MetricTile,
   SectionHeading,
   StatusBadge,
@@ -30,6 +25,7 @@ import {
   listOwnIssueReports,
   listOwnPermits,
 } from "@/lib/api";
+import { isMobilePrimaryRole } from "@/lib/role-surface";
 
 import type {
   FireSafetyCertificateRecord,
@@ -85,13 +81,10 @@ export default function HomeScreen() {
   const accessToken = session?.tokens.accessToken ?? null;
 
   const isInspector = session?.user.role === "inspector";
-  const isSupervisorOrAdmin =
-    session?.user.role === "lgu_admin" ||
-    session?.user.role === "office_supervisor" ||
-    session?.user.role === "admin";
   const isOfficeClerk = session?.user.role === "office_clerk";
   const isBusinessOwner = session?.user.role === "business_owner";
   const isCitizen = session?.user.role === "citizen";
+  const hasMobilePrimaryRole = isMobilePrimaryRole(session?.user.role);
 
   // Inspector / supervisor / clerk data
   const [summary, setSummary] = useState<InspectionSummary | null>(null);
@@ -127,24 +120,20 @@ export default function HomeScreen() {
       setDataError(null);
 
       try {
-        if (isInspector || isSupervisorOrAdmin || isOfficeClerk) {
+        if (isInspector) {
           const [summaryData, inspectionData] = await Promise.all([
             getInspectionSummary(accessToken),
-            isInspector
-              ? listInspections({ accessToken, limit: 10, page: 1 })
-              : Promise.resolve(null),
+            listInspections({ accessToken, limit: 10, page: 1 }),
           ]);
 
           setSummary(summaryData);
 
-          if (inspectionData) {
-            setInspections(inspectionData.data);
-            setCurrentPage(1);
-            setHasMore(
-              inspectionData.meta.total >
-                inspectionData.meta.page * inspectionData.meta.limit,
-            );
-          }
+          setInspections(inspectionData.data);
+          setCurrentPage(1);
+          setHasMore(
+            inspectionData.meta.total >
+              inspectionData.meta.page * inspectionData.meta.limit,
+          );
         } else if (isBusinessOwner) {
           const [permitData, certData] = await Promise.all([
             listOwnPermits(accessToken, { limit: 10 }),
@@ -179,8 +168,6 @@ export default function HomeScreen() {
       isBusinessOwner,
       isCitizen,
       isInspector,
-      isOfficeClerk,
-      isSupervisorOrAdmin,
       signOut,
     ],
   );
@@ -214,329 +201,408 @@ export default function HomeScreen() {
 
   if (!session) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.content}>
-          <AppHero
-            eyebrow="InspectPH mobile"
-            title="Your dashboard"
-            description="Sign in to see your inspection queue, permits, or issue reports."
-          />
-          <AppStateCard
-            title="Sign in to continue"
-            description="Your personalised dashboard is only available when signed in."
-            action={
-              <AppButton
-                fullWidth
-                label="Sign in"
-                onPress={() => {
-                  router.replace("/login");
-                }}
-              />
-            }
-          />
-        </ScrollView>
-      </SafeAreaView>
+      <AppScreen contentContainerStyle={styles.content}>
+        <AppHero
+          eyebrow="InspectPH mobile"
+          title="Your dashboard"
+          description="Sign in to see your inspection queue, permits, or issue reports."
+        />
+        <AppStateCard
+          title="Sign in to continue"
+          description="Your personalised dashboard is only available when signed in."
+          action={
+            <AppButton
+              fullWidth
+              label="Sign in"
+              onPress={() => {
+                router.replace("/login");
+              }}
+            />
+          }
+        />
+      </AppScreen>
     );
   }
 
-  const heroEyebrow = isInspector ? "Assigned queue" : "Mobile monitoring";
+  const heroEyebrow = isInspector
+    ? "Assigned queue"
+    : isBusinessOwner
+      ? "Owner self-service"
+      : isCitizen
+        ? "Citizen reporting"
+        : "Dashboard-first role";
   const heroDescription =
     isBusinessOwner || isCitizen
       ? session.user.roleProfile.label
-      : `${session.user.roleProfile.label} · ${session.user.officeIds.length} office${session.user.officeIds.length === 1 ? "" : "s"}`;
+      : hasMobilePrimaryRole
+        ? `${session.user.roleProfile.label} · ${session.user.officeIds.length} office${session.user.officeIds.length === 1 ? "" : "s"}`
+        : `${session.user.roleProfile.label} · Use the web dashboard for intake, review, reporting, and administration.`;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            colors={[COLORS.primary]}
-            refreshing={isRefreshing}
-            tintColor={COLORS.primary}
-            onRefresh={() => {
-              void loadData({ refreshing: true });
-            }}
-          />
-        }
-      >
-        <AppHero
-          eyebrow={heroEyebrow}
-          title={session.user.name}
-          description={heroDescription}
+    <AppScreen
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          colors={[COLORS.primary]}
+          refreshing={isRefreshing}
+          tintColor={COLORS.primary}
+          onRefresh={() => {
+            void loadData({ refreshing: true });
+          }}
         />
+      }
+    >
+      <AppHero
+        eyebrow={heroEyebrow}
+        title={session.user.name}
+        description={heroDescription}
+      />
 
-        <SyncStatusBar />
+      <SyncStatusBar />
 
-        {dataError ? (
-          <AppStateCard
-            description={dataError}
-            title="Unable to load data"
-            tone="accent"
+      {dataError ? (
+        <AppStateCard
+          description={dataError}
+          title="Unable to load data"
+          tone="accent"
+        />
+      ) : null}
+
+      {!hasMobilePrimaryRole ? (
+        <AppStateCard
+          title="Use the web dashboard for this role"
+          description={
+            isOfficeClerk
+              ? "Permit intake, payment confirmation, and inspection preparation should stay on the dashboard. Mobile remains limited to profile and public lookup tools for this role."
+              : "Supervision, reporting, and administrative work should stay on the dashboard. Mobile field execution is intentionally reserved for inspectors and self-service users."
+          }
+        />
+      ) : null}
+
+      {/* Inspector: workload summary */}
+      {isInspector && summary ? (
+        <SurfaceCard tone="muted">
+          <SectionHeading
+            title="Workload summary"
+            description="Current scoped inspection queue."
           />
-        ) : null}
+          <View style={styles.metricGrid}>
+            <MetricTile
+              label="Scheduled"
+              value={summary.scheduled}
+              tone="primary"
+            />
+            <MetricTile
+              label="In progress"
+              value={summary.inProgress}
+              tone="secondary"
+            />
+            <MetricTile
+              label="Completed"
+              value={summary.completed}
+              tone="default"
+            />
+            <MetricTile label="Overdue" value={summary.overdue} tone="accent" />
+          </View>
+        </SurfaceCard>
+      ) : null}
 
-        {/* Inspector / Supervisor / Clerk: workload summary */}
-        {(isInspector || isSupervisorOrAdmin || isOfficeClerk) && summary ? (
+      {/* Inspector: assigned inspection list */}
+      {isInspector ? (
+        <SurfaceCard>
+          <SectionHeading
+            title="Assigned inspections"
+            description="Scoped to the inspections you are allowed to access."
+          />
+          {isLoading ? (
+            <AppStateCard
+              description="Loading your inspection queue."
+              loading
+              title="Refreshing workload"
+            />
+          ) : null}
+          {!isLoading && inspections.length === 0 && !dataError ? (
+            <AppStateCard
+              description="New work will appear here after assignment."
+              title="No assigned inspections"
+            />
+          ) : null}
+          {inspections.map((inspection) => (
+            <AppRecordCard
+              key={inspection.id}
+              onPress={() => {
+                router.push({
+                  pathname: "/inspections/[inspectionId]",
+                  params: { inspectionId: inspection.id },
+                });
+              }}
+              title={inspection.business.businessName}
+              trailing={
+                <StatusBadge
+                  label={inspection.status.replace("_", " ")}
+                  tone={getInspectionStatusTone(inspection.status)}
+                />
+              }
+            >
+              <AppText size="label" style={styles.recordMeta} tone="subtle">
+                Permit {inspection.permit.permitNumber}
+              </AppText>
+              <AppText size="label" style={styles.recordMeta} tone="subtle">
+                {inspection.office.name} · {inspection.office.code}
+              </AppText>
+              <AppText size="label" style={styles.recordMeta} tone="subtle">
+                {formatDateTime(inspection.scheduledAt)}
+              </AppText>
+            </AppRecordCard>
+          ))}
+          {hasMore ? (
+            <AppButton
+              disabled={isLoadingMore}
+              fullWidth
+              label={isLoadingMore ? "Loading..." : "Load more"}
+              tone="secondary"
+              onPress={() => {
+                void loadMoreInspections();
+              }}
+            />
+          ) : null}
+        </SurfaceCard>
+      ) : null}
+
+      {/* Business owner: permits + certificates */}
+      {isBusinessOwner ? (
+        <>
           <SurfaceCard tone="muted">
             <SectionHeading
-              title="Workload summary"
-              description="Current scoped inspection queue."
+              title="Compliance journey"
+              description="Track your permit, compliance response, and certificate status from one place."
             />
-            <View style={styles.metricGrid}>
-              <MetricTile
-                label="Scheduled"
-                value={summary.scheduled}
-                tone="primary"
-              />
-              <MetricTile
-                label="In progress"
-                value={summary.inProgress}
-                tone="secondary"
-              />
-              <MetricTile
-                label="Completed"
-                value={summary.completed}
-                tone="default"
-              />
-              <MetricTile
-                label="Overdue"
-                value={summary.overdue}
-                tone="accent"
-              />
-            </View>
-          </SurfaceCard>
-        ) : null}
-
-        {/* Supervisor / Admin / Clerk guidance */}
-        {isSupervisorOrAdmin || isOfficeClerk ? (
-          <SurfaceCard>
-            <SectionHeading
-              title={
-                isSupervisorOrAdmin ? "Supervision overview" : "Intake actions"
-              }
-              description={
-                isSupervisorOrAdmin
-                  ? "Use the Field tab to monitor scheduled and in-progress inspections. Assignment changes and entity management require the dashboard."
-                  : "Use the Field tab to view the schedule and map for your office."
-              }
-            />
-          </SurfaceCard>
-        ) : null}
-
-        {/* Inspector: assigned inspection list */}
-        {isInspector ? (
-          <SurfaceCard>
-            <SectionHeading
-              title="Assigned inspections"
-              description="Scoped to the inspections you are allowed to access."
-            />
-            {isLoading ? (
-              <AppStateCard
-                description="Loading your inspection queue."
-                loading
-                title="Refreshing workload"
-              />
-            ) : null}
-            {!isLoading && inspections.length === 0 && !dataError ? (
-              <AppStateCard
-                description="New work will appear here after assignment."
-                title="No assigned inspections"
-              />
-            ) : null}
-            {inspections.map((inspection) => (
-              <AppRecordCard
-                key={inspection.id}
-                onPress={() => {
-                  router.push({
-                    pathname: "/inspections/[inspectionId]",
-                    params: { inspectionId: inspection.id },
-                  });
-                }}
-                title={inspection.business.businessName}
-                trailing={
-                  <StatusBadge
-                    label={inspection.status.replace("_", " ")}
-                    tone={getInspectionStatusTone(inspection.status)}
-                  />
-                }
-              >
-                <Text style={styles.recordMeta}>
-                  Permit {inspection.permit.permitNumber}
-                </Text>
-                <Text style={styles.recordMeta}>
-                  {inspection.office.name} · {inspection.office.code}
-                </Text>
-                <Text style={styles.recordMeta}>
-                  {formatDateTime(inspection.scheduledAt)}
-                </Text>
-              </AppRecordCard>
-            ))}
-            {hasMore ? (
-              <AppButton
-                disabled={isLoadingMore}
-                fullWidth
-                label={isLoadingMore ? "Loading..." : "Load more"}
-                tone="secondary"
-                onPress={() => {
-                  void loadMoreInspections();
-                }}
-              />
-            ) : null}
-          </SurfaceCard>
-        ) : null}
-
-        {/* Business owner: permits + certificates */}
-        {isBusinessOwner ? (
-          <>
-            {isLoading ? (
-              <AppStateCard
-                description="Loading your permits and certificates."
-                loading
-                title="Loading"
-              />
-            ) : null}
-
-            {!isLoading && permits.length === 0 && !dataError ? (
-              <AppStateCard
-                description="No permits are associated with your account yet."
-                title="No permits found"
-              />
-            ) : null}
-
-            {permits.length > 0 ? (
-              <SurfaceCard>
-                <SectionHeading
-                  title="Your permits"
-                  description="Business permits associated with your account."
+            <AppRecordCard
+              title="1. Permit renewal"
+              trailing={
+                <StatusBadge
+                  label={permits[0]?.status.replace("_", " ") ?? "pending"}
+                  tone={permits[0] ? getPermitStatusTone(permits[0].status) : "default"}
                 />
-                {permits.map((permit) => (
-                  <AppRecordCard
-                    key={permit.id}
-                    title={permit.business.businessName}
-                    trailing={
-                      <StatusBadge
-                        label={permit.status.replace("_", " ")}
-                        tone={getPermitStatusTone(permit.status)}
-                      />
-                    }
-                  >
-                    <Text style={styles.recordMeta}>{permit.permitNumber}</Text>
-                    <Text style={styles.recordMeta}>
-                      {permit.lineOfBusiness}
-                    </Text>
-                    <Text style={styles.recordMeta}>
-                      Expires {formatDateOnly(permit.expirationDate)}
-                    </Text>
-                  </AppRecordCard>
-                ))}
-              </SurfaceCard>
-            ) : null}
-
-            {certificates.length > 0 ? (
-              <SurfaceCard tone="muted">
-                <SectionHeading
-                  title="Fire safety certificates"
-                  description="Active fire safety certificates for your establishment."
+              }
+            >
+              <AppText size="label" style={styles.recordMeta} tone="subtle">
+                {permits[0]
+                  ? `Permit ${permits[0].permitNumber} for ${permits[0].business.businessName}`
+                  : "Your current permit record will appear here."}
+              </AppText>
+            </AppRecordCard>
+            <AppRecordCard
+              title="2. Corrective action and reinspection"
+              trailing={<StatusBadge label="services" tone="warning" />}
+            >
+              <AppText size="label" style={styles.recordMeta} tone="subtle">
+                Review CAP details and request reinspection from the Services tab.
+              </AppText>
+            </AppRecordCard>
+            <AppRecordCard
+              title="3. Certificate outcome"
+              trailing={
+                <StatusBadge
+                  label={certificates[0]?.status.replace("_", " ") ?? "pending"}
+                  tone={certificates[0] ? getCertStatusTone(certificates[0].status) : "default"}
                 />
-                {certificates.map((cert) => (
-                  <AppRecordCard
-                    key={cert.id}
-                    title={cert.certificateNumber}
-                    trailing={
-                      <StatusBadge
-                        label={cert.status.replace("_", " ")}
-                        tone={getCertStatusTone(cert.status)}
-                      />
-                    }
-                  >
-                    <Text style={styles.recordMeta}>
-                      Permit {cert.inspection.permit.permitNumber}
-                    </Text>
-                    <Text style={styles.recordMeta}>
-                      Issued {formatDateOnly(cert.issuedAt)} · Expires{" "}
-                      {formatDateOnly(cert.expiresAt)}
-                    </Text>
-                    {cert.remarks ? (
-                      <Text style={styles.recordMeta}>{cert.remarks}</Text>
-                    ) : null}
-                  </AppRecordCard>
-                ))}
-              </SurfaceCard>
-            ) : null}
-          </>
-        ) : null}
+              }
+            >
+              <AppText size="label" style={styles.recordMeta} tone="subtle">
+                {certificates[0]
+                  ? `Certificate ${certificates[0].certificateNumber} is available.`
+                  : "Issued certificates will appear here after a successful follow-up inspection."}
+              </AppText>
+            </AppRecordCard>
+            <AppButton
+              fullWidth
+              label="Open services and CAPs"
+              tone="secondary"
+              onPress={() => {
+                router.push("/(tabs)/services");
+              }}
+            />
+          </SurfaceCard>
 
-        {/* Citizen: own issue reports */}
-        {isCitizen ? (
-          <>
+          {isLoading ? (
+            <AppStateCard
+              description="Loading your permits and certificates."
+              loading
+              title="Loading"
+            />
+          ) : null}
+
+          {!isLoading && permits.length === 0 && !dataError ? (
+            <AppStateCard
+              description="No permits are associated with your account yet."
+              title="No permits found"
+            />
+          ) : null}
+
+          {permits.length > 0 ? (
             <SurfaceCard>
               <SectionHeading
-                title="Report a concern"
-                description="Submit a fire hazard, sanitation issue, or public safety concern."
+                title="Your permits"
+                description="Business permits associated with your account."
               />
-              <AppButton
-                fullWidth
-                label="Open public services"
-                onPress={() => {
-                  router.push("/(tabs)/services");
-                }}
-              />
+              {permits.map((permit) => (
+                <AppRecordCard
+                  key={permit.id}
+                  title={permit.business.businessName}
+                  trailing={
+                    <StatusBadge
+                      label={permit.status.replace("_", " ")}
+                      tone={getPermitStatusTone(permit.status)}
+                    />
+                  }
+                >
+                  <AppText size="label" style={styles.recordMeta} tone="subtle">
+                    {permit.permitNumber}
+                  </AppText>
+                  <AppText size="label" style={styles.recordMeta} tone="subtle">
+                    {permit.lineOfBusiness}
+                  </AppText>
+                  <AppText size="label" style={styles.recordMeta} tone="subtle">
+                    Expires {formatDateOnly(permit.expirationDate)}
+                  </AppText>
+                </AppRecordCard>
+              ))}
             </SurfaceCard>
+          ) : null}
 
-            {isLoading ? (
-              <AppStateCard
-                description="Loading your submitted reports."
-                loading
-                title="Loading"
+          {certificates.length > 0 ? (
+            <SurfaceCard tone="muted">
+              <SectionHeading
+                title="Fire safety certificates"
+                description="Active fire safety certificates for your establishment."
               />
-            ) : reports.length > 0 ? (
-              <SurfaceCard>
-                <SectionHeading
-                  title="Your reports"
-                  description="Issue reports you have submitted."
+              {certificates.map((cert) => (
+                <AppRecordCard
+                  key={cert.id}
+                  title={cert.certificateNumber}
+                  trailing={
+                    <StatusBadge
+                      label={cert.status.replace("_", " ")}
+                      tone={getCertStatusTone(cert.status)}
+                    />
+                  }
+                >
+                  <AppText size="label" style={styles.recordMeta} tone="subtle">
+                    Permit {cert.inspection.permit.permitNumber}
+                  </AppText>
+                  <AppText size="label" style={styles.recordMeta} tone="subtle">
+                    Issued {formatDateOnly(cert.issuedAt)} · Expires{" "}
+                    {formatDateOnly(cert.expiresAt)}
+                  </AppText>
+                  {cert.remarks ? (
+                    <AppText
+                      size="label"
+                      style={styles.recordMeta}
+                      tone="subtle"
+                    >
+                      {cert.remarks}
+                    </AppText>
+                  ) : null}
+                </AppRecordCard>
+              ))}
+            </SurfaceCard>
+          ) : null}
+        </>
+      ) : null}
+
+      {/* Citizen: own issue reports */}
+      {isCitizen ? (
+        <>
+          <SurfaceCard tone="muted">
+            <SectionHeading
+              title="Report timeline"
+              description="Follow the status of your latest concern without calling the office."
+            />
+            <AppRecordCard
+              title="1. Report submitted"
+              trailing={
+                <StatusBadge
+                  label={reports[0]?.status.replace("_", " ") ?? "ready"}
+                  tone={reports[0] ? getReportStatusTone(reports[0].status) : "default"}
                 />
-                {reports.map((report) => (
-                  <AppRecordCard
-                    key={report.id}
-                    title={report.subject}
-                    trailing={
-                      <StatusBadge
-                        label={report.status.replace("_", " ")}
-                        tone={getReportStatusTone(report.status)}
-                      />
-                    }
-                  >
-                    <Text style={styles.recordMeta}>{report.reportNumber}</Text>
-                    <Text style={styles.recordMeta}>
-                      {report.category.replace("_", " ")} ·{" "}
-                      {formatDateTime(report.createdAt)}
-                    </Text>
-                  </AppRecordCard>
-                ))}
-              </SurfaceCard>
-            ) : !dataError ? (
-              <AppStateCard
-                description="Your submitted issue reports will appear here."
-                title="No reports yet"
+              }
+            >
+              <AppText size="label" style={styles.recordMeta} tone="subtle">
+                {reports[0]
+                  ? `${reports[0].reportNumber} · ${reports[0].subject}`
+                  : "Your next submitted report will appear here."}
+              </AppText>
+            </AppRecordCard>
+            <AppRecordCard title="2. Office review" trailing={<StatusBadge label="tracked" tone="info" />}>
+              <AppText size="label" style={styles.recordMeta} tone="subtle">
+                Status updates appear in your personal report list as the office reviews your concern.
+              </AppText>
+            </AppRecordCard>
+          </SurfaceCard>
+
+          <SurfaceCard>
+            <SectionHeading
+              title="Report a concern"
+              description="Submit a fire hazard, sanitation issue, or public safety concern."
+            />
+            <AppButton
+              fullWidth
+              label="Open public services"
+              onPress={() => {
+                router.push("/(tabs)/services");
+              }}
+            />
+          </SurfaceCard>
+
+          {isLoading ? (
+            <AppStateCard
+              description="Loading your submitted reports."
+              loading
+              title="Loading"
+            />
+          ) : reports.length > 0 ? (
+            <SurfaceCard>
+              <SectionHeading
+                title="Your reports"
+                description="Issue reports you have submitted."
               />
-            ) : null}
-          </>
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
+              {reports.map((report) => (
+                <AppRecordCard
+                  key={report.id}
+                  title={report.subject}
+                  trailing={
+                    <StatusBadge
+                      label={report.status.replace("_", " ")}
+                      tone={getReportStatusTone(report.status)}
+                    />
+                  }
+                >
+                  <AppText size="label" style={styles.recordMeta} tone="subtle">
+                    {report.reportNumber}
+                  </AppText>
+                  <AppText size="label" style={styles.recordMeta} tone="subtle">
+                    {report.category.replace("_", " ")} ·{" "}
+                    {formatDateTime(report.createdAt)}
+                  </AppText>
+                </AppRecordCard>
+              ))}
+            </SurfaceCard>
+          ) : !dataError ? (
+            <AppStateCard
+              description="Your submitted issue reports will appear here."
+              title="No reports yet"
+            />
+          ) : null}
+        </>
+      ) : null}
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
   content: {
-    padding: SPACING.lg,
-    gap: SPACING.lg,
-    paddingBottom: SPACING.xxl,
+    paddingTop: SPACING.lg,
   },
   metricGrid: {
     flexDirection: "row",

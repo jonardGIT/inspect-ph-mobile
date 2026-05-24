@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
   AppButton,
   AppChoicePill,
   AppHero,
+  AppMessage,
   AppRecordCard,
+  AppScreen,
   AppStateCard,
+  AppText,
   AppTextField,
   InfoRow,
   SectionHeading,
@@ -222,8 +224,7 @@ export default function InspectionDetailScreen() {
           listInspectionAttachments(token, inspectionId),
         ]);
 
-        const moduleCode =
-          detail.moduleCode ?? detail.office.moduleCodes[0];
+        const moduleCode = detail.moduleCode ?? detail.office.moduleCodes[0];
         const nextChecklistTemplates = await listChecklistTemplates(
           token,
           moduleCode,
@@ -798,538 +799,545 @@ export default function InspectionDetailScreen() {
     Boolean(inspection?.office.moduleCodes.includes("FIRE"));
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content}>
-        {isLoading ? (
-          <AppStateCard
-            description="Pulling assigned field data."
-            loading
-            title="Loading inspection"
-          />
-        ) : null}
+    <AppScreen contentContainerStyle={styles.content}>
+      {isLoading ? (
+        <AppStateCard
+          description="Pulling assigned field data."
+          loading
+          title="Loading inspection"
+        />
+      ) : null}
 
-        {!isLoading && error ? (
-          <AppStateCard
-            action={
-              isRouteBlocked ? (
+      {!isLoading && error ? (
+        <AppStateCard
+          action={
+            isRouteBlocked ? (
+              <AppButton
+                fullWidth
+                label="Back to mobile home"
+                onPress={() => {
+                  router.replace("/");
+                }}
+              />
+            ) : null
+          }
+          description={error}
+          title="Inspection unavailable"
+          tone="accent"
+        />
+      ) : null}
+
+      {!isLoading && !error && inspection ? (
+        <>
+          {isStale ? (
+            <View style={styles.staleBanner}>
+              <AppText
+                size="label"
+                style={styles.staleBannerText}
+                weight="semibold"
+              >
+                Offline — showing last cached data
+              </AppText>
+            </View>
+          ) : null}
+          <SyncStatusBar />
+          <AppHero
+            eyebrow="Inspection detail"
+            title={inspection.business.businessName}
+            description={`Permit ${inspection.permit.permitNumber} · Scheduled ${formatDateTime(inspection.scheduledAt)}`}
+            trailing={
+              <StatusBadge
+                label={inspection.status.replace("_", " ")}
+                tone={getStatusTone(inspection.status)}
+              />
+            }
+          />
+
+          <SurfaceCard tone="muted">
+            <SectionHeading
+              title="Inspection summary"
+              description={inspection.notes?.trim() || "No field notes yet."}
+            />
+            <InfoRow
+              label="Office"
+              value={`${inspection.office.name} · ${inspection.office.code}`}
+            />
+            <InfoRow
+              label="Scheduled"
+              value={formatDateTime(inspection.scheduledAt)}
+            />
+            <InfoRow label="Permit" value={inspection.permit.permitNumber} />
+          </SurfaceCard>
+
+          <SurfaceCard>
+            <SectionHeading
+              title="Field actions"
+              description="Advance the inspection state with live GPS capture from the device."
+            />
+            <View style={styles.actionRow}>
+              {inspection.status === "scheduled" ? (
                 <AppButton
+                  disabled={isUpdatingStatus}
                   fullWidth
-                  label="Back to mobile home"
+                  label="Start inspection"
+                  loading={isUpdatingStatus}
                   onPress={() => {
-                    router.replace("/");
+                    void handleStatusAdvance("in_progress");
                   }}
                 />
-              ) : null
-            }
-            description={error}
-            title="Inspection unavailable"
-            tone="accent"
-          />
-        ) : null}
-
-        {!isLoading && !error && inspection ? (
-          <>
-            {isStale ? (
-              <View style={styles.staleBanner}>
-                <Text style={styles.staleBannerText}>
-                  Offline — showing last cached data
-                </Text>
-              </View>
-            ) : null}
-            <SyncStatusBar />
-            <AppHero
-              eyebrow="Inspection detail"
-              title={inspection.business.businessName}
-              description={`Permit ${inspection.permit.permitNumber} · Scheduled ${formatDateTime(inspection.scheduledAt)}`}
-              trailing={
-                <StatusBadge
-                  label={inspection.status.replace("_", " ")}
-                  tone={getStatusTone(inspection.status)}
+              ) : null}
+              {inspection.status === "in_progress" ? (
+                <AppButton
+                  disabled={isUpdatingStatus}
+                  fullWidth
+                  label="Complete inspection"
+                  loading={isUpdatingStatus}
+                  onPress={() => {
+                    void handleStatusAdvance("completed");
+                  }}
                 />
+              ) : null}
+            </View>
+            {statusError ? (
+              <AppMessage message={statusError} tone="danger" />
+            ) : null}
+          </SurfaceCard>
+
+          <SurfaceCard tone="muted">
+            <SectionHeading
+              title="Geo capture"
+              description={
+                inspection.location
+                  ? `${inspection.location.latitude.toFixed(5)}, ${inspection.location.longitude.toFixed(5)}${inspection.location.accuracyMeters ? ` · ${inspection.location.accuracyMeters}m accuracy` : ""}`
+                  : "No location captured yet for this inspection."
               }
             />
+          </SurfaceCard>
 
-            <SurfaceCard tone="muted">
-              <SectionHeading
-                title="Inspection summary"
-                description={inspection.notes?.trim() || "No field notes yet."}
-              />
-              <InfoRow
-                label="Office"
-                value={`${inspection.office.name} · ${inspection.office.code}`}
-              />
-              <InfoRow
-                label="Scheduled"
-                value={formatDateTime(inspection.scheduledAt)}
-              />
-              <InfoRow label="Permit" value={inspection.permit.permitNumber} />
-            </SurfaceCard>
-
+          {showFireSafetyCertificateCard ? (
             <SurfaceCard>
               <SectionHeading
-                title="Field actions"
-                description="Advance the inspection state with live GPS capture from the device."
+                title="Fire safety certificate"
+                description="Current FireGuard certificate linked to this inspection, when available."
               />
-              <View style={styles.actionRow}>
-                {inspection.status === "scheduled" ? (
-                  <AppButton
-                    disabled={isUpdatingStatus}
-                    fullWidth
-                    label={
-                      isUpdatingStatus ? "Capturing GPS..." : "Start inspection"
-                    }
-                    onPress={() => {
-                      void handleStatusAdvance("in_progress");
-                    }}
-                  />
-                ) : null}
-                {inspection.status === "in_progress" ? (
-                  <AppButton
-                    disabled={isUpdatingStatus}
-                    fullWidth
-                    label={
-                      isUpdatingStatus
-                        ? "Capturing GPS..."
-                        : "Complete inspection"
-                    }
-                    onPress={() => {
-                      void handleStatusAdvance("completed");
-                    }}
-                  />
-                ) : null}
-              </View>
-              {statusError ? (
-                <Text style={styles.errorText}>{statusError}</Text>
+              {isLoadingCertificate ? (
+                <AppText size="label" style={styles.sectionBody} tone="subtle">
+                  Loading the current FireGuard certificate.
+                </AppText>
               ) : null}
-            </SurfaceCard>
-
-            <SurfaceCard tone="muted">
-              <SectionHeading
-                title="Geo capture"
-                description={
-                  inspection.location
-                    ? `${inspection.location.latitude.toFixed(5)}, ${inspection.location.longitude.toFixed(5)}${inspection.location.accuracyMeters ? ` · ${inspection.location.accuracyMeters}m accuracy` : ""}`
-                    : "No location captured yet for this inspection."
-                }
-              />
-            </SurfaceCard>
-
-            {showFireSafetyCertificateCard ? (
-              <SurfaceCard>
-                <SectionHeading
-                  title="Fire safety certificate"
-                  description="Current FireGuard certificate linked to this inspection, when available."
-                />
-                {isLoadingCertificate ? (
-                  <Text style={styles.sectionBody}>
-                    Loading the current FireGuard certificate.
-                  </Text>
-                ) : null}
-                {certificateError ? (
-                  <Text style={styles.errorText}>{certificateError}</Text>
-                ) : null}
-                {!isLoadingCertificate &&
-                !certificateError &&
-                !fireSafetyCertificate ? (
-                  <Text style={styles.sectionBody}>
-                    No fire safety certificate has been issued for this
-                    inspection yet.
-                  </Text>
-                ) : null}
-                {fireSafetyCertificate ? (
-                  <AppRecordCard
-                    title={fireSafetyCertificate.certificateNumber}
-                    trailing={
-                      <StatusBadge
-                        label={fireSafetyCertificate.status.replace("_", " ")}
-                        tone={getCertificateTone(fireSafetyCertificate.status)}
-                      />
-                    }
-                  >
-                    <InfoRow
-                      label="Issued"
-                      value={formatDateTime(fireSafetyCertificate.issuedAt)}
+              {certificateError ? (
+                <AppMessage message={certificateError} tone="danger" />
+              ) : null}
+              {!isLoadingCertificate &&
+              !certificateError &&
+              !fireSafetyCertificate ? (
+                <AppText size="label" style={styles.sectionBody} tone="subtle">
+                  No fire safety certificate has been issued for this inspection
+                  yet.
+                </AppText>
+              ) : null}
+              {fireSafetyCertificate ? (
+                <AppRecordCard
+                  title={fireSafetyCertificate.certificateNumber}
+                  trailing={
+                    <StatusBadge
+                      label={fireSafetyCertificate.status.replace("_", " ")}
+                      tone={getCertificateTone(fireSafetyCertificate.status)}
                     />
-                    <InfoRow
-                      label="Expires"
-                      value={formatDateTime(fireSafetyCertificate.expiresAt)}
-                    />
-                    <InfoRow
-                      label="Permit"
-                      value={
-                        fireSafetyCertificate.inspection.permit.permitNumber
-                      }
-                    />
-                    {fireSafetyCertificate.remarks ? (
-                      <Text style={styles.sectionBody}>
-                        {fireSafetyCertificate.remarks}
-                      </Text>
-                    ) : null}
-                  </AppRecordCard>
-                ) : null}
-              </SurfaceCard>
-            ) : null}
-
-            <SurfaceCard>
-              <SectionHeading
-                title="Checklist"
-                description="Save each checkpoint as you work. Existing results stay editable."
-              />
-              {checklistError ? (
-                <Text style={styles.errorText}>{checklistError}</Text>
-              ) : null}
-              {checklistItems.length === 0 ? (
-                <Text style={styles.sectionBody}>
-                  No checklist responses yet.
-                </Text>
-              ) : (
-                checklistItems.map((item) => {
-                  const draft = checklistDrafts[item.template.id] ?? {
-                    remarks: "",
-                    status: "pass" as ChecklistStatus,
-                  };
-
-                  return (
-                    <AppRecordCard
-                      key={item.template.id}
-                      title={item.template.title}
-                      trailing={
-                        <StatusBadge
-                          label={
-                            item.result
-                              ? item.result.status.replace("_", " ")
-                              : "Pending"
-                          }
-                          tone={
-                            item.result
-                              ? getChecklistTone(item.result.status)
-                              : "default"
-                          }
-                        />
-                      }
-                    >
-                      <View style={styles.segmentRow}>
-                        {CHECKLIST_STATUS_OPTIONS.map((option) => (
-                          <AppChoicePill
-                            key={option}
-                            label={option.replace("_", " ")}
-                            selected={draft.status === option}
-                            onPress={() => {
-                              setChecklistDrafts((currentDrafts) => ({
-                                ...currentDrafts,
-                                [item.template.id]: {
-                                  remarks:
-                                    currentDrafts[item.template.id]?.remarks ??
-                                    "",
-                                  status: option,
-                                },
-                              }));
-                            }}
-                          />
-                        ))}
-                      </View>
-                      <AppTextField
-                        multiline
-                        placeholder="Inspector remarks"
-                        value={draft.remarks}
-                        onChangeText={(value) => {
-                          setChecklistDrafts((currentDrafts) => ({
-                            ...currentDrafts,
-                            [item.template.id]: {
-                              remarks: value,
-                              status:
-                                currentDrafts[item.template.id]?.status ??
-                                "pass",
-                            },
-                          }));
-                        }}
-                      />
-                      <AppButton
-                        disabled={savingTemplateId === item.template.id}
-                        fullWidth
-                        onPress={() => {
-                          void handleChecklistSave(item.template);
-                        }}
-                        label={
-                          savingTemplateId === item.template.id
-                            ? "Saving..."
-                            : "Save checklist item"
-                        }
-                        tone="secondary"
-                      />
-                    </AppRecordCard>
-                  );
-                })
-              )}
-            </SurfaceCard>
-
-            <SurfaceCard>
-              <SectionHeading
-                title="Findings"
-                description="Record field issues with severity and optional corrective action."
-              />
-              {/* Photo-first: capture evidence before filling the form */}
-              <AppButton
-                disabled={isCapturingFindingPhoto || isCreatingFinding}
-                fullWidth
-                label={
-                  isCapturingFindingPhoto
-                    ? "Opening camera..."
-                    : findingPhotoAsset
-                      ? "Evidence photo captured — retake"
-                      : "Capture evidence photo (optional)"
-                }
-                onPress={() => {
-                  void handleCaptureFindingPhoto();
-                }}
-                tone={findingPhotoAsset ? "secondary" : "primary"}
-              />
-              <AppTextField
-                label="Finding title"
-                placeholder="Finding title"
-                value={findingTitle}
-                onChangeText={setFindingTitle}
-              />
-              <AppTextField
-                label="Finding description"
-                multiline
-                placeholder="Finding description"
-                value={findingDescription}
-                onChangeText={setFindingDescription}
-              />
-              <AppTextField
-                label="Corrective action"
-                placeholder="Corrective action"
-                value={findingCorrectiveAction}
-                onChangeText={setFindingCorrectiveAction}
-              />
-              <View style={styles.segmentRow}>
-                {FINDING_SEVERITIES.map((severity) => (
-                  <AppChoicePill
-                    key={severity}
-                    label={severity}
-                    selected={findingSeverity === severity}
-                    onPress={() => {
-                      setFindingSeverity(severity);
-                    }}
-                  />
-                ))}
-              </View>
-              <AppButton
-                disabled={isCreatingFinding}
-                fullWidth
-                label={
-                  isCreatingFinding
-                    ? "Capturing GPS..."
-                    : "Create finding with GPS"
-                }
-                onPress={() => {
-                  void handleCreateFinding();
-                }}
-              />
-              {findingError ? (
-                <Text style={styles.errorText}>{findingError}</Text>
-              ) : null}
-              {queuedFindings.length > 0 ? (
-                <SurfaceCard tone="muted" style={styles.nestedCard}>
-                  <SectionHeading
-                    title="Sync status"
-                    description={`${queuedFindings.length} finding${queuedFindings.length === 1 ? "" : "s"} waiting for retry.`}
-                  />
-                  <AppButton
-                    disabled={Boolean(retryingFindingId)}
-                    fullWidth
-                    label={
-                      retryingFindingId
-                        ? "Retrying..."
-                        : "Retry pending findings"
-                    }
-                    onPress={() => {
-                      void handleRetryAllQueuedFindings();
-                    }}
-                    tone="secondary"
-                  />
-                  {queuedFindings.map((item) => (
-                    <AppRecordCard
-                      key={item.id}
-                      style={styles.queuedRow}
-                      title={item.title}
-                      trailing={
-                        <AppButton
-                          disabled={retryingFindingId === item.id}
-                          label={
-                            retryingFindingId === item.id ? "Retrying" : "Retry"
-                          }
-                          onPress={() => {
-                            void handleRetryQueuedFinding(item);
-                          }}
-                          tone="secondary"
-                        />
-                      }
-                    >
-                      <Text style={styles.rowMeta}>
-                        {item.status === "pending"
-                          ? "Pending sync"
-                          : "Retry failed"}{" "}
-                        · Attempt {item.retryCount + 1}
-                      </Text>
-                      <Text style={styles.rowMeta}>
-                        Severity {item.severity} · Queued{" "}
-                        {formatDateTime(item.queuedAt)}
-                      </Text>
-                      {item.lastError ? (
-                        <Text style={styles.errorText}>{item.lastError}</Text>
-                      ) : null}
-                    </AppRecordCard>
-                  ))}
-                </SurfaceCard>
-              ) : null}
-              {findings.length === 0 ? (
-                <Text style={styles.sectionBody}>
-                  No findings recorded yet.
-                </Text>
-              ) : (
-                findings.map((finding) => (
-                  <AppRecordCard
-                    key={finding.id}
-                    title={finding.title}
-                    trailing={
-                      <StatusBadge
-                        label={finding.severity}
-                        tone={getSeverityTone(finding.severity)}
-                      />
-                    }
-                  >
-                    <Text style={styles.rowMeta}>
-                      {finding.resolvedAt ? "Resolved" : "Open"}
-                    </Text>
-                    <Text style={styles.rowMeta}>{finding.description}</Text>
-                    {finding.correctiveAction ? (
-                      <Text style={styles.sectionBody}>
-                        Corrective action: {finding.correctiveAction}
-                      </Text>
-                    ) : null}
-                  </AppRecordCard>
-                ))
-              )}
-            </SurfaceCard>
-
-            <SurfaceCard>
-              <SectionHeading
-                title="Attachments"
-                description="Capture evidence photos in the field or attach them from the device library."
-              />
-              {queuedAttachments.length > 0 ? (
-                <SurfaceCard tone="muted" style={styles.nestedCard}>
-                  <SectionHeading
-                    title="Sync status"
-                    description={`${queuedAttachments.length} attachment${queuedAttachments.length === 1 ? "" : "s"} waiting for retry.`}
-                  />
-                  <AppButton
-                    disabled={Boolean(retryingAttachmentId)}
-                    fullWidth
-                    label={
-                      retryingAttachmentId
-                        ? "Retrying..."
-                        : "Retry pending uploads"
-                    }
-                    onPress={() => {
-                      void handleRetryAllQueuedAttachments();
-                    }}
-                    tone="secondary"
-                  />
-                  {queuedAttachments.map((item) => (
-                    <AppRecordCard
-                      key={item.id}
-                      style={styles.queuedRow}
-                      title={item.fileName}
-                      trailing={
-                        <AppButton
-                          disabled={retryingAttachmentId === item.id}
-                          label={
-                            retryingAttachmentId === item.id
-                              ? "Retrying"
-                              : "Retry"
-                          }
-                          onPress={() => {
-                            void handleRetryQueuedAttachment(item);
-                          }}
-                          tone="secondary"
-                        />
-                      }
-                    >
-                      <Text style={styles.rowMeta}>
-                        {item.status === "pending"
-                          ? "Pending sync"
-                          : "Retry failed"}{" "}
-                        · Attempt {item.retryCount + 1}
-                      </Text>
-                      <Text style={styles.rowMeta}>
-                        Queued {formatDateTime(item.queuedAt)}
-                      </Text>
-                      {item.lastError ? (
-                        <Text style={styles.errorText}>{item.lastError}</Text>
-                      ) : null}
-                    </AppRecordCard>
-                  ))}
-                </SurfaceCard>
-              ) : null}
-              <View style={styles.buttonRow}>
-                <AppButton
-                  disabled={isUploadingAttachment}
-                  label={
-                    isUploadingAttachment ? "Uploading..." : "Capture photo"
                   }
+                >
+                  <InfoRow
+                    label="Issued"
+                    value={formatDateTime(fireSafetyCertificate.issuedAt)}
+                  />
+                  <InfoRow
+                    label="Expires"
+                    value={formatDateTime(fireSafetyCertificate.expiresAt)}
+                  />
+                  <InfoRow
+                    label="Permit"
+                    value={fireSafetyCertificate.inspection.permit.permitNumber}
+                  />
+                  {fireSafetyCertificate.remarks ? (
+                    <AppText
+                      size="label"
+                      style={styles.sectionBody}
+                      tone="subtle"
+                    >
+                      {fireSafetyCertificate.remarks}
+                    </AppText>
+                  ) : null}
+                </AppRecordCard>
+              ) : null}
+            </SurfaceCard>
+          ) : null}
+
+          <SurfaceCard>
+            <SectionHeading
+              title="Checklist"
+              description="Save each checkpoint as you work. Existing results stay editable."
+            />
+            {checklistError ? (
+              <AppMessage message={checklistError} tone="danger" />
+            ) : null}
+            {checklistItems.length === 0 ? (
+              <AppText size="label" style={styles.sectionBody} tone="subtle">
+                No checklist responses yet.
+              </AppText>
+            ) : (
+              checklistItems.map((item) => {
+                const draft = checklistDrafts[item.template.id] ?? {
+                  remarks: "",
+                  status: "pass" as ChecklistStatus,
+                };
+
+                return (
+                  <AppRecordCard
+                    key={item.template.id}
+                    title={item.template.title}
+                    trailing={
+                      <StatusBadge
+                        label={
+                          item.result
+                            ? item.result.status.replace("_", " ")
+                            : "Pending"
+                        }
+                        tone={
+                          item.result
+                            ? getChecklistTone(item.result.status)
+                            : "default"
+                        }
+                      />
+                    }
+                  >
+                    <View style={styles.segmentRow}>
+                      {CHECKLIST_STATUS_OPTIONS.map((option) => (
+                        <AppChoicePill
+                          key={option}
+                          label={option.replace("_", " ")}
+                          selected={draft.status === option}
+                          onPress={() => {
+                            setChecklistDrafts((currentDrafts) => ({
+                              ...currentDrafts,
+                              [item.template.id]: {
+                                remarks:
+                                  currentDrafts[item.template.id]?.remarks ??
+                                  "",
+                                status: option,
+                              },
+                            }));
+                          }}
+                        />
+                      ))}
+                    </View>
+                    <AppTextField
+                      multiline
+                      placeholder="Inspector remarks"
+                      value={draft.remarks}
+                      onChangeText={(value) => {
+                        setChecklistDrafts((currentDrafts) => ({
+                          ...currentDrafts,
+                          [item.template.id]: {
+                            remarks: value,
+                            status:
+                              currentDrafts[item.template.id]?.status ?? "pass",
+                          },
+                        }));
+                      }}
+                    />
+                    <AppButton
+                      disabled={savingTemplateId === item.template.id}
+                      fullWidth
+                      loading={savingTemplateId === item.template.id}
+                      onPress={() => {
+                        void handleChecklistSave(item.template);
+                      }}
+                      label="Save checklist item"
+                      tone="secondary"
+                    />
+                  </AppRecordCard>
+                );
+              })
+            )}
+          </SurfaceCard>
+
+          <SurfaceCard>
+            <SectionHeading
+              title="Findings"
+              description="Record field issues with severity and optional corrective action."
+            />
+            {/* Photo-first: capture evidence before filling the form */}
+            <AppButton
+              disabled={isCapturingFindingPhoto || isCreatingFinding}
+              fullWidth
+              label={
+                findingPhotoAsset
+                  ? "Evidence photo captured — retake"
+                  : "Capture evidence photo (optional)"
+              }
+              loading={isCapturingFindingPhoto}
+              onPress={() => {
+                void handleCaptureFindingPhoto();
+              }}
+              tone={findingPhotoAsset ? "secondary" : "primary"}
+            />
+            <AppTextField
+              label="Finding title"
+              placeholder="Finding title"
+              value={findingTitle}
+              onChangeText={setFindingTitle}
+            />
+            <AppTextField
+              label="Finding description"
+              multiline
+              placeholder="Finding description"
+              value={findingDescription}
+              onChangeText={setFindingDescription}
+            />
+            <AppTextField
+              label="Corrective action"
+              placeholder="Corrective action"
+              value={findingCorrectiveAction}
+              onChangeText={setFindingCorrectiveAction}
+            />
+            <View style={styles.segmentRow}>
+              {FINDING_SEVERITIES.map((severity) => (
+                <AppChoicePill
+                  key={severity}
+                  label={severity}
+                  selected={findingSeverity === severity}
                   onPress={() => {
-                    void handleAttachmentUpload("camera");
+                    setFindingSeverity(severity);
                   }}
-                  style={styles.rowButton}
+                />
+              ))}
+            </View>
+            <AppButton
+              disabled={isCreatingFinding}
+              fullWidth
+              label="Create finding with GPS"
+              loading={isCreatingFinding}
+              onPress={() => {
+                void handleCreateFinding();
+              }}
+            />
+            {findingError ? (
+              <AppMessage message={findingError} tone="danger" />
+            ) : null}
+            {queuedFindings.length > 0 ? (
+              <SurfaceCard tone="muted" style={styles.nestedCard}>
+                <SectionHeading
+                  title="Sync status"
+                  description={`${queuedFindings.length} finding${queuedFindings.length === 1 ? "" : "s"} waiting for retry.`}
                 />
                 <AppButton
-                  disabled={isUploadingAttachment}
-                  label="Attach from library"
+                  disabled={Boolean(retryingFindingId)}
+                  fullWidth
+                  label="Retry pending findings"
+                  loading={Boolean(retryingFindingId)}
                   onPress={() => {
-                    void handleAttachmentUpload("library");
+                    void handleRetryAllQueuedFindings();
                   }}
-                  style={styles.rowButton}
                   tone="secondary"
                 />
-              </View>
-              {attachmentError ? (
-                <Text style={styles.errorText}>{attachmentError}</Text>
-              ) : null}
-              {attachments.length === 0 ? (
-                <Text style={styles.sectionBody}>
-                  No attachments uploaded for this inspection yet.
-                </Text>
-              ) : (
-                attachments.map((attachment) => (
+                {queuedFindings.map((item) => (
                   <AppRecordCard
-                    key={attachment.id}
-                    title={attachment.fileName}
+                    key={item.id}
+                    style={styles.queuedRow}
+                    title={item.title}
                     trailing={
-                      <View style={styles.attachmentPreviewShell}>
-                        <Text style={styles.attachmentPreviewLabel}>IMG</Text>
-                      </View>
+                      <AppButton
+                        disabled={retryingFindingId === item.id}
+                        label="Retry"
+                        loading={retryingFindingId === item.id}
+                        onPress={() => {
+                          void handleRetryQueuedFinding(item);
+                        }}
+                        tone="secondary"
+                      />
                     }
                   >
-                    <Text style={styles.rowMeta}>{attachment.mimeType}</Text>
-                    <Text style={styles.rowMeta}>
-                      {(attachment.fileSizeBytes / 1024).toFixed(1)} KB
-                    </Text>
-                    <Text style={styles.rowMeta}>
-                      {attachment.capturedAt
-                        ? `Captured ${formatDateTime(attachment.capturedAt)}`
-                        : `Uploaded ${formatDateTime(attachment.createdAt)}`}
-                    </Text>
+                    <AppText size="label" style={styles.rowMeta} tone="subtle">
+                      {item.status === "pending"
+                        ? "Pending sync"
+                        : "Retry failed"}{" "}
+                      · Attempt {item.retryCount + 1}
+                    </AppText>
+                    <AppText size="label" style={styles.rowMeta} tone="subtle">
+                      Severity {item.severity} · Queued{" "}
+                      {formatDateTime(item.queuedAt)}
+                    </AppText>
+                    {item.lastError ? (
+                      <AppText
+                        size="label"
+                        style={styles.errorText}
+                        tone="danger"
+                      >
+                        {item.lastError}
+                      </AppText>
+                    ) : null}
                   </AppRecordCard>
-                ))
-              )}
-            </SurfaceCard>
-          </>
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
+                ))}
+              </SurfaceCard>
+            ) : null}
+            {findings.length === 0 ? (
+              <AppText size="label" style={styles.sectionBody} tone="subtle">
+                No findings recorded yet.
+              </AppText>
+            ) : (
+              findings.map((finding) => (
+                <AppRecordCard
+                  key={finding.id}
+                  title={finding.title}
+                  trailing={
+                    <StatusBadge
+                      label={finding.severity}
+                      tone={getSeverityTone(finding.severity)}
+                    />
+                  }
+                >
+                  <AppText size="label" style={styles.rowMeta} tone="subtle">
+                    {finding.resolvedAt ? "Resolved" : "Open"}
+                  </AppText>
+                  <AppText size="label" style={styles.rowMeta} tone="subtle">
+                    {finding.description}
+                  </AppText>
+                  {finding.correctiveAction ? (
+                    <AppText
+                      size="label"
+                      style={styles.sectionBody}
+                      tone="subtle"
+                    >
+                      Corrective action: {finding.correctiveAction}
+                    </AppText>
+                  ) : null}
+                </AppRecordCard>
+              ))
+            )}
+          </SurfaceCard>
+
+          <SurfaceCard>
+            <SectionHeading
+              title="Attachments"
+              description="Capture evidence photos in the field or attach them from the device library."
+            />
+            {queuedAttachments.length > 0 ? (
+              <SurfaceCard tone="muted" style={styles.nestedCard}>
+                <SectionHeading
+                  title="Sync status"
+                  description={`${queuedAttachments.length} attachment${queuedAttachments.length === 1 ? "" : "s"} waiting for retry.`}
+                />
+                <AppButton
+                  disabled={Boolean(retryingAttachmentId)}
+                  fullWidth
+                  label="Retry pending uploads"
+                  loading={Boolean(retryingAttachmentId)}
+                  onPress={() => {
+                    void handleRetryAllQueuedAttachments();
+                  }}
+                  tone="secondary"
+                />
+                {queuedAttachments.map((item) => (
+                  <AppRecordCard
+                    key={item.id}
+                    style={styles.queuedRow}
+                    title={item.fileName}
+                    trailing={
+                      <AppButton
+                        disabled={retryingAttachmentId === item.id}
+                        label="Retry"
+                        loading={retryingAttachmentId === item.id}
+                        onPress={() => {
+                          void handleRetryQueuedAttachment(item);
+                        }}
+                        tone="secondary"
+                      />
+                    }
+                  >
+                    <AppText size="label" style={styles.rowMeta} tone="subtle">
+                      {item.status === "pending"
+                        ? "Pending sync"
+                        : "Retry failed"}{" "}
+                      · Attempt {item.retryCount + 1}
+                    </AppText>
+                    <AppText size="label" style={styles.rowMeta} tone="subtle">
+                      Queued {formatDateTime(item.queuedAt)}
+                    </AppText>
+                    {item.lastError ? (
+                      <AppText
+                        size="label"
+                        style={styles.errorText}
+                        tone="danger"
+                      >
+                        {item.lastError}
+                      </AppText>
+                    ) : null}
+                  </AppRecordCard>
+                ))}
+              </SurfaceCard>
+            ) : null}
+            <View style={styles.buttonRow}>
+              <AppButton
+                disabled={isUploadingAttachment}
+                label="Capture photo"
+                loading={isUploadingAttachment}
+                onPress={() => {
+                  void handleAttachmentUpload("camera");
+                }}
+                style={styles.rowButton}
+              />
+              <AppButton
+                disabled={isUploadingAttachment}
+                label="Attach from library"
+                onPress={() => {
+                  void handleAttachmentUpload("library");
+                }}
+                style={styles.rowButton}
+                tone="secondary"
+              />
+            </View>
+            {attachmentError ? (
+              <AppMessage message={attachmentError} tone="danger" />
+            ) : null}
+            {attachments.length === 0 ? (
+              <AppText size="label" style={styles.sectionBody} tone="subtle">
+                No attachments uploaded for this inspection yet.
+              </AppText>
+            ) : (
+              attachments.map((attachment) => (
+                <AppRecordCard
+                  key={attachment.id}
+                  title={attachment.fileName}
+                  trailing={
+                    <View style={styles.attachmentPreviewShell}>
+                      <AppText
+                        size="body"
+                        style={styles.attachmentPreviewLabel}
+                        weight="heavy"
+                      >
+                        IMG
+                      </AppText>
+                    </View>
+                  }
+                >
+                  <AppText size="label" style={styles.rowMeta} tone="subtle">
+                    {attachment.mimeType}
+                  </AppText>
+                  <AppText size="label" style={styles.rowMeta} tone="subtle">
+                    {(attachment.fileSizeBytes / 1024).toFixed(1)} KB
+                  </AppText>
+                  <AppText size="label" style={styles.rowMeta} tone="subtle">
+                    {attachment.capturedAt
+                      ? `Captured ${formatDateTime(attachment.capturedAt)}`
+                      : `Uploaded ${formatDateTime(attachment.createdAt)}`}
+                  </AppText>
+                </AppRecordCard>
+              ))
+            )}
+          </SurfaceCard>
+        </>
+      ) : null}
+    </AppScreen>
   );
 }
 
@@ -1468,10 +1476,6 @@ function getCertificateTone(status: FireSafetyCertificateRecord["status"]) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
   staleBanner: {
     backgroundColor: COLORS.accentMuted,
     borderColor: COLORS.accent,
@@ -1487,9 +1491,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   content: {
-    padding: SPACING.lg,
-    gap: SPACING.lg,
-    paddingBottom: SPACING.xxl,
+    paddingTop: SPACING.lg,
   },
   centeredState: {
     alignItems: "center",
