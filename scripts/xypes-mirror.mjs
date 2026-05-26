@@ -6,11 +6,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 const workspaceRoot = path.resolve(repoRoot, "..");
-const outputDir = path.join(
+const defaultMirrorRoot = path.resolve(
   repoRoot,
-  ".xypes-mirror",
-  "xypes-inspectph-mobile",
+  "..",
+  "..",
+  "inspect-ph-mirror",
 );
+const mirrorRoot = process.env.XYPES_MIRROR_ROOT?.trim()
+  ? path.resolve(process.env.XYPES_MIRROR_ROOT)
+  : defaultMirrorRoot;
+const outputDir = path.join(mirrorRoot, "xypes-inspectph-mobile");
 const sharedTypesSourceCandidates = [
   path.join(workspaceRoot, "shared", "types", "api.ts"),
   path.join(repoRoot, "shared", "types", "api.ts"),
