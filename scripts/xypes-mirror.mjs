@@ -11,7 +11,10 @@ const outputDir = path.join(
   ".xypes-mirror",
   "xypes-inspectph-mobile",
 );
-const sharedTypesSource = path.join(workspaceRoot, "shared", "types", "api.ts");
+const sharedTypesSourceCandidates = [
+  path.join(workspaceRoot, "shared", "types", "api.ts"),
+  path.join(repoRoot, "shared", "types", "api.ts"),
+];
 
 const copyEntries = [
   ".env.local.example",
@@ -64,6 +67,20 @@ async function copyEntry(source, destination) {
 
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await fs.copyFile(source, destination);
+}
+
+async function resolveSharedTypesSource() {
+  for (const candidate of sharedTypesSourceCandidates) {
+    if (await pathExists(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    `Shared API contract not found. Checked: ${sharedTypesSourceCandidates.join(
+      ", ",
+    )}`,
+  );
 }
 
 async function walk(directory) {
@@ -122,6 +139,7 @@ async function rewriteMirrorFiles(directory) {
 
 async function prepareMirror() {
   await ensureCleanDir(outputDir);
+  const sharedTypesSource = await resolveSharedTypesSource();
 
   for (const entry of copyEntries) {
     const sourcePath = path.join(repoRoot, entry);

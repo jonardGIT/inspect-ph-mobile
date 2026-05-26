@@ -16,6 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/checkout@v4
+        with:
+          repository: jonardGIT/inspect-ph-shared
+          path: shared
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
