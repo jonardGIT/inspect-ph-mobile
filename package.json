@@ -11,6 +11,7 @@
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
     "web": "expo start --web",
+    "mirror:xypes:prepare": "node scripts/xypes-mirror.mjs prepare",
     "lint": "expo lint",
     "test": "jest --config jest.config.ts --runInBand",
     "typecheck": "tsc --noEmit"
