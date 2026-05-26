@@ -8,7 +8,7 @@ applyTo: "components/**,constants/theme.ts"
 
 - Keep reusable components in `components`.
 - Define and export prop types explicitly.
-- Prefer one component per file unless closely related helpers are tiny.
+- Prefer one component per file unless closely related helpers are tiny
 
 ## Styling rules
 
